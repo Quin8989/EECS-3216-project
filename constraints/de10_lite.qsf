@@ -109,3 +109,10 @@ set_location_assignment PIN_N1  -to VGA_VS
 # ── GPIO header J1 ──────────────────────────────────────────────────────────
 # GPIO[0] = UART TX
 set_location_assignment PIN_V10 -to GPIO[0]
+
+# ── PS/2 keyboard (wired to GPIO header J1) ────────────────────────────────
+# PS2_CLK → GPIO[1] = PIN_W10
+# PS2_DAT → GPIO[2] = PIN_V9
+# Wire PS/2 connector CLK/DATA to these GPIO pins + pull-ups to 3.3V
+set_location_assignment PIN_W10 -to PS2_CLK
+set_location_assignment PIN_V9  -to PS2_DAT

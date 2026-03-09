@@ -5,6 +5,7 @@
 //   0x1000_0000  UART        (data @ +0, status @ +4)
 //   0x2000_0000  Timer       (count @ +0, compare @ +4)
 //   0x3000_0000  VGA         (framebuffer)
+//   0x4000_0000  Keyboard    (data @ +0, status @ +4)
 
 module mem_map (
     // CPU side
@@ -42,7 +43,14 @@ module mem_map (
     output logic [31:0] vga_wdata_o,
     output logic        vga_wen_o,
     output logic        vga_ren_o,
-    input  logic [31:0] vga_rdata_i
+    input  logic [31:0] vga_rdata_i,
+
+    // Keyboard
+    output logic [31:0] kbd_addr_o,
+    output logic [31:0] kbd_wdata_o,
+    output logic        kbd_wen_o,
+    output logic        kbd_ren_o,
+    input  logic [31:0] kbd_rdata_i
 );
 
     // Device select from upper address byte
@@ -53,6 +61,7 @@ module mem_map (
     localparam SEL_UART  = 8'h10;
     localparam SEL_TIMER = 8'h20;
     localparam SEL_VGA   = 8'h30;
+    localparam SEL_KBD   = 8'h40;
 
     // Forward address and data to all devices
     assign ram_addr_o   = addr_i;
@@ -68,18 +77,23 @@ module mem_map (
     assign vga_addr_o  = addr_i;
     assign vga_wdata_o = wdata_i;
 
+    assign kbd_addr_o  = addr_i;
+    assign kbd_wdata_o = wdata_i;
+
     // Write enables: only the selected device gets the write
     always_comb begin
         ram_wen_o   = 1'b0;
         uart_wen_o  = 1'b0;
         timer_wen_o = 1'b0;
         vga_wen_o   = 1'b0;
+        kbd_wen_o   = 1'b0;
 
         case (sel)
             SEL_RAM:   ram_wen_o   = wen_i;
             SEL_UART:  uart_wen_o  = wen_i;
             SEL_TIMER: timer_wen_o = wen_i;
             SEL_VGA:   vga_wen_o   = wen_i;
+            SEL_KBD:   kbd_wen_o   = wen_i;
             default:   ;
         endcase
     end
@@ -90,12 +104,14 @@ module mem_map (
         uart_ren_o  = 1'b0;
         timer_ren_o = 1'b0;
         vga_ren_o   = 1'b0;
+        kbd_ren_o   = 1'b0;
 
         case (sel)
             SEL_RAM:   ram_ren_o   = ren_i;
             SEL_UART:  uart_ren_o  = ren_i;
             SEL_TIMER: timer_ren_o = ren_i;
             SEL_VGA:   vga_ren_o   = ren_i;
+            SEL_KBD:   kbd_ren_o   = ren_i;
             default:   ;
         endcase
     end
@@ -107,6 +123,7 @@ module mem_map (
             SEL_UART:  rdata_o = uart_rdata_i;
             SEL_TIMER: rdata_o = timer_rdata_i;
             SEL_VGA:   rdata_o = vga_rdata_i;
+            SEL_KBD:   rdata_o = kbd_rdata_i;
             default:   rdata_o = 32'hDEAD_BEEF;
         endcase
     end

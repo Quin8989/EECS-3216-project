@@ -10,7 +10,10 @@ module top (
     output logic       vga_hsync,
     output logic       vga_vsync,
     // UART
-    output logic       uart_tx_o
+    output logic       uart_tx_o,
+    // PS/2 keyboard
+    input  logic       ps2_clk_i,
+    input  logic       ps2_data_i
 );
 
     // CPU data bus
@@ -42,6 +45,9 @@ module top (
 
     logic [31:0] vga_addr,   vga_wdata,   vga_rdata;
     logic        vga_wen,    vga_ren;
+
+    logic [31:0] kbd_addr,   kbd_wdata,   kbd_rdata;
+    logic        kbd_wen,    kbd_ren;
 
     // Memory map
     mem_map u_mem_map (
@@ -75,7 +81,13 @@ module top (
         .vga_wdata_o (vga_wdata),
         .vga_wen_o   (vga_wen),
         .vga_ren_o   (vga_ren),
-        .vga_rdata_i (vga_rdata)
+        .vga_rdata_i (vga_rdata),
+
+        .kbd_addr_o  (kbd_addr),
+        .kbd_wdata_o (kbd_wdata),
+        .kbd_wen_o   (kbd_wen),
+        .kbd_ren_o   (kbd_ren),
+        .kbd_rdata_i (kbd_rdata)
     );
 
     // Data RAM
@@ -110,6 +122,19 @@ module top (
         .wen_i   (timer_wen),
         .ren_i   (timer_ren),
         .rdata_o (timer_rdata)
+    );
+
+    // Keyboard
+    keyboard u_kbd (
+        .clk        (clk),
+        .rst        (reset),
+        .addr_i     (kbd_addr),
+        .wdata_i    (kbd_wdata),
+        .wen_i      (kbd_wen),
+        .ren_i      (kbd_ren),
+        .rdata_o    (kbd_rdata),
+        .ps2_clk_i  (ps2_clk_i),
+        .ps2_data_i (ps2_data_i)
     );
 
     // Pixel clock: divide system clock by 2 (50 MHz → 25 MHz)

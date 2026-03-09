@@ -28,7 +28,11 @@ module top_fpga (
     output logic        VGA_VS,
 
     // ── GPIO header ──────────────────────────────────
-    output logic [0:0]  GPIO   // GPIO[0] = UART TX
+    output logic [0:0]  GPIO,  // GPIO[0] = UART TX
+
+    // ── PS/2 keyboard (directly on FPGA pads) ─────────
+    input  logic        PS2_CLK,
+    input  logic        PS2_DAT
 );
 
     // ── Reset synchroniser (2-FF, active-high) ────
@@ -54,7 +58,9 @@ module top_fpga (
         .vga_b     (VGA_B),
         .vga_hsync (VGA_HS),
         .vga_vsync (VGA_VS),
-        .uart_tx_o (uart_tx_w)
+        .uart_tx_o (uart_tx_w),
+        .ps2_clk_i (PS2_CLK),
+        .ps2_data_i(PS2_DAT)
     );
 
     // ── Debug LEDs ────────────────────────────────

@@ -4,13 +4,19 @@
 module test_top;
     logic clk, reset;
     logic uart_tx;
+    logic ps2_clk, ps2_data;
+
+    // PS/2 lines idle high (no keyboard attached in most tests)
+    initial begin ps2_clk = 1'b1; ps2_data = 1'b1; end
 
     clockgen clkgen (.clk(clk));
 
     top dut (
         .clk(clk),
         .reset(reset),
-        .uart_tx_o(uart_tx)
+        .uart_tx_o(uart_tx),
+        .ps2_clk_i(ps2_clk),
+        .ps2_data_i(ps2_data)
     );
 
     initial begin

@@ -12,6 +12,8 @@ periph/uart.sv
 periph/timer.sv
 periph/vga_timing.sv
 periph/vga_text.sv
+periph/ps2_rx.sv
+periph/keyboard.sv
 cpu/cpu.sv
 soc/top.sv
 soc/top_fpga.sv
