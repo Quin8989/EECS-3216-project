@@ -1,11 +1,11 @@
-// UART peripheral (sim stub)
+// UART peripheral
 //
 // Register map:
-//   +0x0  TX_DATA  (write: send byte, read: last RX byte)
-//   +0x4  STATUS   (read: bit 0 = tx_ready, bit 1 = rx_valid)
+//   +0x0  TX_DATA  (write: send byte)
+//   +0x4  STATUS   (read: bit 0 = tx_ready)
 //
-// In simulation, writes to TX_DATA print the character via $write.
-// For FPGA, replace the $write with a real TX shift register.
+// Contains a real uart_tx shift register for FPGA (115200 8N1).
+// In simulation, also prints via $write for convenience.
 
 module uart (
     input  logic        clk,
@@ -14,7 +14,8 @@ module uart (
     input  logic [31:0] wdata_i,
     input  logic        wen_i,
     input  logic        ren_i,
-    output logic [31:0] rdata_o
+    output logic [31:0] rdata_o,
+    output logic        tx_o        // serial TX line (idle high)
 );
 
     localparam ADDR_TX_DATA = 3'h0;  // offset +0
@@ -23,19 +24,30 @@ module uart (
     logic [2:0] offset;
     assign offset = addr_i[2:0];
 
-    // Status: always ready in sim
+    // ── TX shift register ─────────────────────────────────
+    logic tx_valid;
     logic tx_ready;
-    assign tx_ready = 1'b1;
 
-    // TX: print character in simulation
+    assign tx_valid = wen_i && (offset == ADDR_TX_DATA);
+
+    uart_tx u_tx (
+        .clk     (clk),
+        .rst     (rst),
+        .data_i  (wdata_i[7:0]),
+        .valid_i (tx_valid),
+        .ready_o (tx_ready),
+        .tx_o    (tx_o)
+    );
+
+    // ── Sim: also print via $write ────────────────────────
     // synthesis translate_off
     always_ff @(posedge clk) begin
-        if (!rst && wen_i && offset == ADDR_TX_DATA)
+        if (!rst && tx_valid)
             $write("%c", wdata_i[7:0]);
     end
     // synthesis translate_on
 
-    // Read mux
+    // ── Read mux ──────────────────────────────────────────
     always_comb begin
         case (offset)
             ADDR_STATUS: rdata_o = {30'b0, 1'b0, tx_ready};  // bit0=tx_ready

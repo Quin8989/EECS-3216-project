@@ -8,7 +8,9 @@ module top (
     output logic [3:0] vga_g,
     output logic [3:0] vga_b,
     output logic       vga_hsync,
-    output logic       vga_vsync
+    output logic       vga_vsync,
+    // UART
+    output logic       uart_tx_o
 );
 
     // CPU data bus
@@ -95,7 +97,8 @@ module top (
         .wdata_i (uart_wdata),
         .wen_i   (uart_wen),
         .ren_i   (uart_ren),
-        .rdata_o (uart_rdata)
+        .rdata_o (uart_rdata),
+        .tx_o    (uart_tx_o)
     );
 
     // Timer

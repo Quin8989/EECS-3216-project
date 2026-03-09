@@ -3,12 +3,14 @@
 
 module test_top;
     logic clk, reset;
+    logic uart_tx;
 
     clockgen clkgen (.clk(clk));
 
     top dut (
         .clk(clk),
-        .reset(reset)
+        .reset(reset),
+        .uart_tx_o(uart_tx)
     );
 
     initial begin

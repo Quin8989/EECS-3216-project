@@ -44,6 +44,8 @@ module top_fpga (
     assign reset = rst_sync[1];
 
     // ── SoC ───────────────────────────────────────
+    logic uart_tx_w;
+
     top u_soc (
         .clk       (MAX10_CLK1_50),
         .reset     (reset),
@@ -51,7 +53,8 @@ module top_fpga (
         .vga_g     (VGA_G),
         .vga_b     (VGA_B),
         .vga_hsync (VGA_HS),
-        .vga_vsync (VGA_VS)
+        .vga_vsync (VGA_VS),
+        .uart_tx_o (uart_tx_w)
     );
 
     // ── Debug LEDs ────────────────────────────────
@@ -69,8 +72,7 @@ module top_fpga (
     // LEDR[9:2]: unused — tie off
     assign LEDR[9:2] = '0;
 
-    // ── GPIO: UART TX placeholder ─────────────────
-    // Will be driven by a real uart_tx module later.
-    assign GPIO[0] = 1'b1;  // idle-high (UART idle state)
+    // ── GPIO: UART TX ────────────────────────────
+    assign GPIO[0] = uart_tx_w;
 
 endmodule : top_fpga

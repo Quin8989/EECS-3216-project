@@ -7,6 +7,7 @@ cpu/control.sv
 cpu/fetch.sv
 periph/ram.sv
 soc/mem_map.sv
+periph/uart_tx.sv
 periph/uart.sv
 periph/timer.sv
 periph/vga_timing.sv
