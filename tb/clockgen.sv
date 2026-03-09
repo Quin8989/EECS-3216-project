@@ -1,5 +1,6 @@
 // Clock generator
-// Produces a free-running clock with configurable period.
+`timescale 1ns/1ps
+
 module clockgen #(
     parameter HALF_PERIOD = 5
 )(

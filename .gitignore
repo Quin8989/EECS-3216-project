@@ -1,5 +1,6 @@
 # Build artifacts
 work/
+run.macro
 *.wlf
 transcript
 *.vcd
@@ -11,9 +12,6 @@ incremental_db/
 output_files/
 *.qws
 *.bak
-
-# Sim directories
-verif/sim/
 
 # OS
 .DS_Store

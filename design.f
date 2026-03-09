@@ -1,0 +1,15 @@
+soc/constants.svh
+cpu/register_file.sv
+cpu/branch_control.sv
+cpu/execute.sv
+cpu/igen.sv
+cpu/control.sv
+cpu/fetch.sv
+periph/ram.sv
+soc/mem_map.sv
+periph/uart.sv
+periph/timer.sv
+periph/vga_timing.sv
+periph/vga_text.sv
+cpu/cpu.sv
+soc/top.sv

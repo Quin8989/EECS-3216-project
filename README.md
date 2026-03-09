@@ -12,13 +12,37 @@ A single-cycle RV32I processor platform targeting the DE10-Lite FPGA, with VGA o
 ## Project Structure
 
 ```
-design/
-  code/           -- RTL source files
-  constraints/    -- Quartus pin assignments / SDC
-verif/
-  scripts/        -- Makefiles, design file list
-  tests/          -- Testbenches
+rtl/
+  cpu/            -- Processor core
+    constants.svh     Shared defines (opcodes, ALU selects)
+    fetch.sv          PC + instruction ROM
+    control.sv        Main decoder
+    execute.sv        ALU
+    branch_control.sv Branch comparator
+    igen.sv           Immediate generator
+    register_file.sv  32×32 register file
+    cpu.sv            Top CPU module (decode + writeback inlined)
+  periph/         -- Peripherals
+    ram.sv            Byte-addressable data RAM (64 KB)
+    uart.sv           UART (sim stub — $write; FPGA: TX shift register)
+    timer.sv          Timer (COUNT / CMP / STATUS)
+    vga_timing.sv     VGA 640×480 @ 60 Hz sync generator
+    vga_text.sv       80×30 text-mode VGA controller + font ROM
+  soc/            -- System integration
+    constants.svh     Shared defines
+    mem_map.sv        Address decoder (RAM / UART / Timer / VGA)
+    top.sv            SoC top-level
+tb/               -- Testbenches
+  clockgen.sv       Free-running clock
+  test_top.sv       Top-level testbench (ECALL detect, PASS/FAIL)
+data/             -- ROM / data files
+  font8x8.hex       8×8 bitmap font (128 chars)
+programs/         -- Test programs (.x hex files)
+  isa-tests/        RISC-V ISA compliance tests (rv32ui-p-*.x)
+constraints/      -- Quartus pin assignments / SDC
 docs/             -- Reports, diagrams, notes
+design.f          -- RTL file list
+Makefile          -- Build system
 ```
 
 ## Getting Started
@@ -34,18 +58,19 @@ cd EECS-3216-project
 source env.sh
 ```
 
-### 3. Compile (ModelSim)
+### 3. Compile
 ```
-make compile -C verif/scripts VSIM=1
+make compile
 ```
 
 ### 4. Run
 ```
-make run -C verif/scripts VSIM=1 TEST=test1
+make run
+make run TEST=test1
 ```
 
 ### 5. Synthesize (Quartus)
-Open `design/constraints/de10lite.qsf` in Quartus, or use the Quartus CLI flow.
+Open the project in Quartus, or use the Quartus CLI flow.
 
 ## Module Ownership
 
