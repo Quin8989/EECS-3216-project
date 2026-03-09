@@ -15,12 +15,9 @@ A single-cycle RV32I processor platform targeting the DE10-Lite FPGA, with VGA o
 design/
   code/           -- RTL source files
   constraints/    -- Quartus pin assignments / SDC
-  probes.svh      -- Signal probes for testbench
-  design_wrapper.sv
 verif/
   scripts/        -- Makefiles, design file list
   tests/          -- Testbenches
-  data/           -- Test programs (.x hex files)
 docs/             -- Reports, diagrams, notes
 ```
 

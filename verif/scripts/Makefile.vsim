@@ -3,7 +3,6 @@
 SRCLIST = $(shell cat $(CL_ROOT)/verif/scripts/design.f)
 SRC     = $(addprefix $(CL_ROOT)/design/code/, $(SRCLIST)) \
           $(CL_ROOT)/verif/tests/clockgen.sv \
-          $(CL_ROOT)/design/design_wrapper.sv \
           $(CL_ROOT)/verif/tests/test_top.sv
 
 compile:
@@ -13,12 +12,7 @@ compile:
 		-suppress 7061 \
 		-sv \
 		+incdir+$(CL_ROOT)/design/code \
-		+incdir+$(CL_ROOT)/design \
 		+incdir+$(CL_ROOT)/verif/tests \
-		+define+MEM_PATH=$(MEM_PATH_STR) \
-		+define+MEM_DEPTH=$(MEM_DEPTH) \
-		+define+LINE_COUNT=$(LINE_COUNT) \
-		+define+TIMEOUT=$(TIMEOUT) \
 		$(SRC)
 
 run: compile

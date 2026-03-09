@@ -1,12 +1,12 @@
 // EECS 3216 - Top-level testbench
 `timescale 1ns/1ps
 
-module top;
+module test_top;
     logic clk, reset;
 
     clockgen clkgen (.clk(clk));
 
-    design_wrapper dut (
+    top dut (
         .clk(clk),
         .reset(reset)
     );
@@ -15,9 +15,5 @@ module top;
         reset = 1;
         #20;
         reset = 0;
-
-        #(`TIMEOUT * 10);
-        $display("TIMEOUT reached");
-        $finish;
     end
 endmodule
