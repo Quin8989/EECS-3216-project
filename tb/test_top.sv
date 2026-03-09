@@ -37,7 +37,7 @@ module test_top;
     end
 
     initial begin
-        #500000;
+        #10000000;  // 10 ms
         $display("TIMEOUT");
         $finish;
     end

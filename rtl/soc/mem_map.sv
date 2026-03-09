@@ -1,6 +1,7 @@
 // Memory map: routes CPU data bus to devices by address.
 //
 // Address map:
+//   0x0100_0000  ROM (read-only, instruction ROM data access)
 //   0x0200_0000  Data RAM    (64 KB)
 //   0x1000_0000  UART        (data @ +0, status @ +4)
 //   0x2000_0000  Timer       (count @ +0, compare @ +4)
@@ -15,6 +16,11 @@ module mem_map (
     input  logic        ren_i,
     input  logic [2:0]  funct3_i,
     output logic [31:0] rdata_o,
+
+    // ROM (read-only)
+    output logic [31:0] rom_addr_o,
+    output logic        rom_ren_o,
+    input  logic [31:0] rom_rdata_i,
 
     // RAM
     output logic [31:0] ram_addr_o,
@@ -57,6 +63,7 @@ module mem_map (
     logic [7:0] sel;
     assign sel = addr_i[31:24];
 
+    localparam SEL_ROM   = 8'h01;
     localparam SEL_RAM   = 8'h02;
     localparam SEL_UART  = 8'h10;
     localparam SEL_TIMER = 8'h20;
@@ -64,6 +71,7 @@ module mem_map (
     localparam SEL_KBD   = 8'h40;
 
     // Forward address and data to all devices
+    assign rom_addr_o   = addr_i;
     assign ram_addr_o   = addr_i;
     assign ram_wdata_o  = wdata_i;
     assign ram_funct3_o = funct3_i;
@@ -81,6 +89,7 @@ module mem_map (
     assign kbd_wdata_o = wdata_i;
 
     // Write enables: only the selected device gets the write
+    // (ROM is never written)
     always_comb begin
         ram_wen_o   = 1'b0;
         uart_wen_o  = 1'b0;
@@ -100,6 +109,7 @@ module mem_map (
 
     // Read enables
     always_comb begin
+        rom_ren_o   = 1'b0;
         ram_ren_o   = 1'b0;
         uart_ren_o  = 1'b0;
         timer_ren_o = 1'b0;
@@ -107,6 +117,7 @@ module mem_map (
         kbd_ren_o   = 1'b0;
 
         case (sel)
+            SEL_ROM:   rom_ren_o   = ren_i;
             SEL_RAM:   ram_ren_o   = ren_i;
             SEL_UART:  uart_ren_o  = ren_i;
             SEL_TIMER: timer_ren_o = ren_i;
@@ -119,6 +130,7 @@ module mem_map (
     // Read data mux
     always_comb begin
         case (sel)
+            SEL_ROM:   rdata_o = rom_rdata_i;
             SEL_RAM:   rdata_o = ram_rdata_i;
             SEL_UART:  rdata_o = uart_rdata_i;
             SEL_TIMER: rdata_o = timer_rdata_i;

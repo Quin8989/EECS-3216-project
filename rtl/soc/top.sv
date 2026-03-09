@@ -33,6 +33,9 @@ module top (
     );
 
     // Device buses
+    logic [31:0] rom_addr,   rom_rdata;
+    logic        rom_ren;
+
     logic [31:0] ram_addr,   ram_wdata,   ram_rdata;
     logic        ram_wen,    ram_ren;
     logic [2:0]  ram_funct3;
@@ -57,6 +60,10 @@ module top (
         .ren_i      (dmem_ren),
         .funct3_i   (dmem_funct3),
         .rdata_o    (dmem_rdata),
+
+        .rom_addr_o  (rom_addr),
+        .rom_ren_o   (rom_ren),
+        .rom_rdata_i (rom_rdata),
 
         .ram_addr_o   (ram_addr),
         .ram_wdata_o  (ram_wdata),
@@ -89,6 +96,36 @@ module top (
         .kbd_ren_o   (kbd_ren),
         .kbd_rdata_i (kbd_rdata)
     );
+
+    // Instruction ROM — data bus read port
+    // Allows CPU loads from ROM range (0x0100_xxxx) for .rodata/.data init.
+    logic [31:0] rom_data [0:16383];
+    initial begin
+        for (int i = 0; i < 16384; i++) rom_data[i] = 32'h0;
+        $readmemh(`MEM_PATH, rom_data);
+    end
+
+    // Byte extraction for ROM reads (same logic as ram.sv)
+    logic [31:0] rom_word;
+    assign rom_word = rom_data[(rom_addr - 32'h0100_0000) >> 2];
+
+    logic [1:0]  rom_byte_off;
+    assign rom_byte_off = rom_addr[1:0];
+
+    logic [7:0]  rom_bv;
+    logic [15:0] rom_hv;
+    assign rom_bv = rom_word[rom_byte_off*8 +: 8];
+    assign rom_hv = rom_word[rom_byte_off[1]*16 +: 16];
+
+    always_comb begin
+        case (dmem_funct3)
+            `F3_BYTE:  rom_rdata = {{24{rom_bv[7]}}, rom_bv};
+            `F3_BYTEU: rom_rdata = {24'b0, rom_bv};
+            `F3_HALF:  rom_rdata = {{16{rom_hv[15]}}, rom_hv};
+            `F3_HALFU: rom_rdata = {16'b0, rom_hv};
+            default:   rom_rdata = rom_word;  // F3_WORD
+        endcase
+    end
 
     // Data RAM
     ram u_ram (
