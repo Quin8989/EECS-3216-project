@@ -32,6 +32,7 @@ rtl/
     constants.svh     Shared defines
     mem_map.sv        Address decoder (RAM / UART / Timer / VGA)
     top.sv            SoC top-level
+    top_fpga.sv       FPGA wrapper (DE10-Lite pins, reset sync, debug LEDs)
 tb/               -- Testbenches
   clockgen.sv       Free-running clock
   test_top.sv       Top-level testbench (ECALL detect, PASS/FAIL)
@@ -40,6 +41,8 @@ data/             -- ROM / data files
 programs/         -- Test programs (.x hex files)
   isa-tests/        RISC-V ISA compliance tests (rv32ui-p-*.x)
 constraints/      -- Quartus pin assignments / SDC
+  de10_lite.qsf     Pin assignments & project settings
+  de10_lite.sdc     Timing constraints (50 MHz + pixel clock)
 docs/             -- Reports, diagrams, notes
 design.f          -- RTL file list
 Makefile          -- Build system
@@ -69,8 +72,20 @@ make run
 make run TEST=test1
 ```
 
-### 5. Synthesize (Quartus)
-Open the project in Quartus, or use the Quartus CLI flow.
+### 5. Synthesize (Quartus — DE10-Lite)
+```bash
+# Create a Quartus project in the constraints/ directory, then:
+cd constraints
+quartus_sh --flow compile de10_lite
+# Or: open Quartus GUI, File → Open Project → constraints/de10_lite.qpf
+```
+The `.qsf` assigns all DE10-Lite pins (clock, VGA, LEDs, keys, switches, GPIO).
+The `.sdc` constrains the 50 MHz input clock and derived 25 MHz pixel clock.
+
+To program the board:
+```bash
+quartus_pgm -m jtag -o "p;output_files/de10_lite.sof"
+```
 
 ## Module Ownership
 

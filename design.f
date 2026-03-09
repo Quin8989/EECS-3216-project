@@ -13,3 +13,4 @@ periph/vga_timing.sv
 periph/vga_text.sv
 cpu/cpu.sv
 soc/top.sv
+soc/top_fpga.sv

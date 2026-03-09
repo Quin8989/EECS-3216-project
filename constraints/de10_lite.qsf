@@ -1,0 +1,111 @@
+# =============================================================================
+# DE10-Lite Quartus Project Settings & Pin Assignments
+#
+# Device: Intel MAX 10 — 10M50DAF484C7G
+# Board:  Terasic DE10-Lite
+#
+# Source this file in a Quartus project, or copy into your .qsf:
+#   source de10_lite.qsf    (from Quartus Tcl console)
+# =============================================================================
+
+# ── Device / project ────────────────────────────────────────────────────────
+set_global_assignment -name FAMILY "MAX 10"
+set_global_assignment -name DEVICE 10M50DAF484C7G
+set_global_assignment -name TOP_LEVEL_ENTITY top_fpga
+set_global_assignment -name ORIGINAL_QUARTUS_VERSION 20.1
+set_global_assignment -name PROJECT_CREATION_TIME_DATE "2026-03-09"
+set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
+set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
+set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 256
+set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 200 LFPM AIRFLOW"
+set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (COVERAGE)"
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
+set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
+
+# ── Source files ────────────────────────────────────────────────────────────
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/constants.svh
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/register_file.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/branch_control.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/execute.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/igen.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/control.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/fetch.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/cpu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/ram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/uart.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/timer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/vga_timing.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/vga_text.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/mem_map.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/top.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/top_fpga.sv
+
+# ── SDC ─────────────────────────────────────────────────────────────────────
+set_global_assignment -name SDC_FILE de10_lite.sdc
+
+# ── I/O standard (3.3V LVCMOS for all user I/O on DE10-Lite) ───────────────
+set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
+
+# =============================================================================
+# Pin Assignments
+# =============================================================================
+
+# ── Clock (50 MHz) ──────────────────────────────────────────────────────────
+set_location_assignment PIN_P11 -to MAX10_CLK1_50
+
+# ── Push-buttons (active low) ──────────────────────────────────────────────
+set_location_assignment PIN_B8 -to KEY[0]
+set_location_assignment PIN_A7 -to KEY[1]
+
+# ── Slide switches ─────────────────────────────────────────────────────────
+set_location_assignment PIN_C10 -to SW[0]
+set_location_assignment PIN_C11 -to SW[1]
+set_location_assignment PIN_D12 -to SW[2]
+set_location_assignment PIN_C12 -to SW[3]
+set_location_assignment PIN_A12 -to SW[4]
+set_location_assignment PIN_B12 -to SW[5]
+set_location_assignment PIN_A13 -to SW[6]
+set_location_assignment PIN_A14 -to SW[7]
+set_location_assignment PIN_B14 -to SW[8]
+set_location_assignment PIN_F15 -to SW[9]
+
+# ── LEDs (active high) ─────────────────────────────────────────────────────
+set_location_assignment PIN_A8  -to LEDR[0]
+set_location_assignment PIN_A9  -to LEDR[1]
+set_location_assignment PIN_A10 -to LEDR[2]
+set_location_assignment PIN_B10 -to LEDR[3]
+set_location_assignment PIN_D13 -to LEDR[4]
+set_location_assignment PIN_C13 -to LEDR[5]
+set_location_assignment PIN_E14 -to LEDR[6]
+set_location_assignment PIN_D14 -to LEDR[7]
+set_location_assignment PIN_A11 -to LEDR[8]
+set_location_assignment PIN_B11 -to LEDR[9]
+
+# ── VGA DAC ─────────────────────────────────────────────────────────────────
+# VGA_R [3:0]
+set_location_assignment PIN_AA1 -to VGA_R[0]
+set_location_assignment PIN_V1  -to VGA_R[1]
+set_location_assignment PIN_Y2  -to VGA_R[2]
+set_location_assignment PIN_Y1  -to VGA_R[3]
+
+# VGA_G [3:0]
+set_location_assignment PIN_W1  -to VGA_G[0]
+set_location_assignment PIN_T2  -to VGA_G[1]
+set_location_assignment PIN_R2  -to VGA_G[2]
+set_location_assignment PIN_R1  -to VGA_G[3]
+
+# VGA_B [3:0]
+set_location_assignment PIN_P1  -to VGA_B[0]
+set_location_assignment PIN_T1  -to VGA_B[1]
+set_location_assignment PIN_P4  -to VGA_B[2]
+set_location_assignment PIN_N2  -to VGA_B[3]
+
+# VGA sync
+set_location_assignment PIN_N3  -to VGA_HS
+set_location_assignment PIN_N1  -to VGA_VS
+
+# ── GPIO header J1 ──────────────────────────────────────────────────────────
+# GPIO[0] = UART TX
+set_location_assignment PIN_V10 -to GPIO[0]

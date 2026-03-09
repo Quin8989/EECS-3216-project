@@ -28,10 +28,12 @@ module uart (
     assign tx_ready = 1'b1;
 
     // TX: print character in simulation
+    // synthesis translate_off
     always_ff @(posedge clk) begin
         if (!rst && wen_i && offset == ADDR_TX_DATA)
             $write("%c", wdata_i[7:0]);
     end
+    // synthesis translate_on
 
     // Read mux
     always_comb begin
