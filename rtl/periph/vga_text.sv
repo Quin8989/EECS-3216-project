@@ -94,9 +94,9 @@ module vga_text (
     assign char_col = h_count[9:3];         // h / 8
     assign char_row = v_count[9:4];         // v / 16
 
-    // Text buffer index
+    // Text buffer index: row*80 = (row<<6) + (row<<4), avoids hardware multiplier
     logic [11:0] char_idx;
-    assign char_idx = char_row * COLS + {5'b0, char_col};
+    assign char_idx = {1'b0, char_row, 6'b0} + {3'b0, char_row, 4'b0} + {5'b0, char_col};
 
     // Character code from buffer
     logic [7:0] char_code;

@@ -11,7 +11,10 @@ module fetch #(
     input  logic [AWIDTH-1:0] next_pc_i,
     input  logic              brtaken_i,
     output logic [AWIDTH-1:0] pc_o,
-    output logic [DWIDTH-1:0] insn_o
+    output logic [DWIDTH-1:0] insn_o,
+    // Data-bus read port (shares instruction ROM — avoids a duplicate)
+    input  logic [AWIDTH-1:0] rom_daddr_i,
+    output logic [DWIDTH-1:0] rom_drdata_o
 );
 
     // PC register
@@ -36,5 +39,8 @@ module fetch #(
     end
 
     assign insn_o = imem[(pc_q - BASE_ADDR) >> 2];
+
+    // Second read port: data-bus access to instruction ROM
+    assign rom_drdata_o = imem[(rom_daddr_i - BASE_ADDR) >> 2];
 
 endmodule : fetch

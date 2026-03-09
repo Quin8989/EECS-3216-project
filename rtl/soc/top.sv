@@ -21,19 +21,8 @@ module top (
     logic        dmem_wen, dmem_ren;
     logic [2:0]  dmem_funct3;
 
-    cpu u_cpu (
-        .clk           (clk),
-        .reset         (reset),
-        .dmem_addr_o   (dmem_addr),
-        .dmem_wdata_o  (dmem_wdata),
-        .dmem_rdata_i  (dmem_rdata),
-        .dmem_wen_o    (dmem_wen),
-        .dmem_ren_o    (dmem_ren),
-        .dmem_funct3_o (dmem_funct3)
-    );
-
     // Device buses
-    logic [31:0] rom_addr,   rom_rdata;
+    logic [31:0] rom_addr,   rom_rdata,   rom_word;
     logic        rom_ren;
 
     logic [31:0] ram_addr,   ram_wdata,   ram_rdata;
@@ -51,6 +40,19 @@ module top (
 
     logic [31:0] kbd_addr,   kbd_wdata,   kbd_rdata;
     logic        kbd_wen,    kbd_ren;
+
+    cpu u_cpu (
+        .clk           (clk),
+        .reset         (reset),
+        .dmem_addr_o   (dmem_addr),
+        .dmem_wdata_o  (dmem_wdata),
+        .dmem_rdata_i  (dmem_rdata),
+        .dmem_wen_o    (dmem_wen),
+        .dmem_ren_o    (dmem_ren),
+        .dmem_funct3_o (dmem_funct3),
+        .rom_daddr_i   (rom_addr),
+        .rom_drdata_o  (rom_word)
+    );
 
     // Memory map
     mem_map u_mem_map (
@@ -97,17 +99,8 @@ module top (
         .kbd_rdata_i (kbd_rdata)
     );
 
-    // Instruction ROM — data bus read port
-    // Allows CPU loads from ROM range (0x0100_xxxx) for .rodata/.data init.
-    logic [31:0] rom_data [0:16383];
-    initial begin
-        for (int i = 0; i < 16384; i++) rom_data[i] = 32'h0;
-        $readmemh(`MEM_PATH, rom_data);
-    end
-
-    // Byte extraction for ROM reads (same logic as ram.sv)
-    logic [31:0] rom_word;
-    assign rom_word = rom_data[(rom_addr - 32'h0100_0000) >> 2];
+    // Byte extraction for ROM data-bus reads
+    // rom_word comes from cpu → fetch (shared instruction ROM, dual-port read)
 
     logic [1:0]  rom_byte_off;
     assign rom_byte_off = rom_addr[1:0];
