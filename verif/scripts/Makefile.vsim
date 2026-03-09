@@ -1,0 +1,35 @@
+# EECS 3216 Project - ModelSim targets
+
+SRCLIST = $(shell cat $(CL_ROOT)/verif/scripts/design.f)
+SRC     = $(addprefix $(CL_ROOT)/design/code/, $(SRCLIST)) \
+          $(CL_ROOT)/verif/tests/clockgen.sv \
+          $(CL_ROOT)/design/design_wrapper.sv \
+          $(CL_ROOT)/verif/tests/test_top.sv
+
+compile:
+	@echo "=== ModelSim Compile ==="
+	mkdir -p $(SIM_DIR)
+	vlog -work $(CL_ROOT)/work \
+		-suppress 7061 \
+		-sv \
+		+incdir+$(CL_ROOT)/design/code \
+		+incdir+$(CL_ROOT)/design \
+		+incdir+$(CL_ROOT)/verif/tests \
+		+define+MEM_PATH=$(MEM_PATH_STR) \
+		+define+MEM_DEPTH=$(MEM_DEPTH) \
+		+define+LINE_COUNT=$(LINE_COUNT) \
+		+define+TIMEOUT=$(TIMEOUT) \
+		$(SRC)
+
+run: compile
+	@echo "=== ModelSim Run ==="
+	rm -f $(CL_ROOT)/verif/scripts/run.macro
+	echo "run -all" > $(CL_ROOT)/verif/scripts/run.macro
+	cd $(SIM_DIR) && vsim -suppress 3839 -c \
+		-do $(CL_ROOT)/verif/scripts/run.macro \
+		$(CL_ROOT)/work.top
+
+clean:
+	rm -rf $(CL_ROOT)/work $(SIM_DIR) $(CL_ROOT)/verif/scripts/run.macro
+
+.PHONY: compile run clean

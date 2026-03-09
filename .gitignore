@@ -1,0 +1,24 @@
+# Build artifacts
+work/
+*.wlf
+transcript
+*.vcd
+*.log
+
+# Quartus artifacts
+db/
+incremental_db/
+output_files/
+*.qws
+*.bak
+
+# Sim directories
+verif/sim/
+
+# OS
+.DS_Store
+*.swp
+*~
+
+# Packages
+*.tar.gz
