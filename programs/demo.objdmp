@@ -5,7 +5,7 @@
 Disassembly of section .text:
 
 01000000 <_start>:
- 1000000:	01010117          	auipc	sp,0x1010
+ 1000000:	01002117          	auipc	sp,0x1002
  1000004:	00010113          	mv	sp,sp
  1000008:	00000517          	auipc	a0,0x0
  100000c:	3b850513          	addi	a0,a0,952 # 10003c0 <_data_load>
@@ -33,12 +33,12 @@ Disassembly of section .text:
 
 01000064 <uart_putc>:
  1000064:	10000737          	lui	a4,0x10000
- 1000068:	00470713          	addi	a4,a4,4 # 10000004 <_stack_top+0xdff0004>
+ 1000068:	00470713          	addi	a4,a4,4 # 10000004 <_stack_top+0xdffe004>
  100006c:	00072783          	lw	a5,0(a4)
  1000070:	0017f793          	andi	a5,a5,1
  1000074:	fe078ce3          	beqz	a5,100006c <uart_putc+0x8>
  1000078:	100007b7          	lui	a5,0x10000
- 100007c:	00a7a023          	sw	a0,0(a5) # 10000000 <_stack_top+0xdff0000>
+ 100007c:	00a7a023          	sw	a0,0(a5) # 10000000 <_stack_top+0xdffe000>
  1000080:	00008067          	ret
 
 01000084 <vga_newline>:
@@ -54,7 +54,7 @@ Disassembly of section .text:
  10000a8:	00001537          	lui	a0,0x1
  10000ac:	00000713          	li	a4,0
  10000b0:	30000837          	lui	a6,0x30000
- 10000b4:	14058593          	addi	a1,a1,320 # 30000140 <_stack_top+0x2dff0140>
+ 10000b4:	14058593          	addi	a1,a1,320 # 30000140 <_stack_top+0x2dffe140>
  10000b8:	05000893          	li	a7,80
  10000bc:	91050513          	addi	a0,a0,-1776 # 910 <_start-0xfff6f0>
  10000c0:	00271793          	slli	a5,a4,0x2
@@ -70,9 +70,9 @@ Disassembly of section .text:
  10000e8:	fca71ce3          	bne	a4,a0,10000c0 <vga_newline+0x3c>
  10000ec:	300027b7          	lui	a5,0x30002
  10000f0:	30002737          	lui	a4,0x30002
- 10000f4:	44078793          	addi	a5,a5,1088 # 30002440 <_stack_top+0x2dff2440>
+ 10000f4:	44078793          	addi	a5,a5,1088 # 30002440 <_stack_top+0x2e000440>
  10000f8:	02000613          	li	a2,32
- 10000fc:	58070713          	addi	a4,a4,1408 # 30002580 <_stack_top+0x2dff2580>
+ 10000fc:	58070713          	addi	a4,a4,1408 # 30002580 <_stack_top+0x2e000580>
  1000100:	00c7a023          	sw	a2,0(a5)
  1000104:	00478793          	addi	a5,a5,4
  1000108:	fee79ce3          	bne	a5,a4,1000100 <vga_newline+0x7c>
@@ -124,7 +124,7 @@ Disassembly of section .text:
  10001b8:	00008067          	ret
 
 010001bc <main>:
- 10001bc:	fe010113          	addi	sp,sp,-32 # 200ffe0 <_bss_end+0xffd8>
+ 10001bc:	fe010113          	addi	sp,sp,-32 # 2001fe0 <_bss_end+0x1fd8>
  10001c0:	00812c23          	sw	s0,24(sp)
  10001c4:	01000437          	lui	s0,0x1000
  10001c8:	00112e23          	sw	ra,28(sp)
@@ -153,7 +153,7 @@ Disassembly of section .text:
  1000224:	01000937          	lui	s2,0x1000
  1000228:	00000713          	li	a4,0
  100022c:	400009b7          	lui	s3,0x40000
- 1000230:	00448493          	addi	s1,s1,4 # 40000004 <_stack_top+0x3dff0004>
+ 1000230:	00448493          	addi	s1,s1,4 # 40000004 <_stack_top+0x3dffe004>
  1000234:	0f000a13          	li	s4,240
  1000238:	07f00a93          	li	s5,127
  100023c:	34090913          	addi	s2,s2,832 # 1000340 <scancode_to_ascii>
@@ -161,7 +161,7 @@ Disassembly of section .text:
  1000244:	0004a783          	lw	a5,0(s1)
  1000248:	0017f793          	andi	a5,a5,1
  100024c:	fe078ce3          	beqz	a5,1000244 <main+0x88>
- 1000250:	0009a783          	lw	a5,0(s3) # 40000000 <_stack_top+0x3dff0000>
+ 1000250:	0009a783          	lw	a5,0(s3) # 40000000 <_stack_top+0x3dffe000>
  1000254:	07478663          	beq	a5,s4,10002c0 <main+0x104>
  1000258:	02071863          	bnez	a4,1000288 <main+0xcc>
  100025c:	02fae663          	bltu	s5,a5,1000288 <main+0xcc>

@@ -22,8 +22,9 @@ module top (
     logic [2:0]  dmem_funct3;
 
     // Device buses
-    logic [31:0] rom_addr,   rom_rdata,   rom_word;
-    logic        rom_ren;
+    logic [31:0] rom_addr,   rom_rdata,   rom_word,  rom_wdata;
+    logic        rom_ren,    rom_wen;
+    logic [2:0]  rom_funct3;
 
     logic [31:0] ram_addr,   ram_wdata,   ram_rdata;
     logic        ram_wen,    ram_ren;
@@ -51,7 +52,10 @@ module top (
         .dmem_ren_o    (dmem_ren),
         .dmem_funct3_o (dmem_funct3),
         .rom_daddr_i   (rom_addr),
-        .rom_drdata_o  (rom_word)
+        .rom_drdata_o  (rom_word),
+        .rom_dwen_i    (rom_wen),
+        .rom_dwdata_i  (rom_wdata),
+        .rom_dfunct3_i (rom_funct3)
     );
 
     // Memory map
@@ -66,6 +70,9 @@ module top (
         .rom_addr_o  (rom_addr),
         .rom_ren_o   (rom_ren),
         .rom_rdata_i (rom_rdata),
+        .rom_wdata_o (rom_wdata),
+        .rom_wen_o   (rom_wen),
+        .rom_funct3_o(rom_funct3),
 
         .ram_addr_o   (ram_addr),
         .ram_wdata_o  (ram_wdata),

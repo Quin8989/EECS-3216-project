@@ -17,10 +17,13 @@ module mem_map (
     input  logic [2:0]  funct3_i,
     output logic [31:0] rdata_o,
 
-    // ROM (read-only)
+    // ROM (writable for ISA-test compatibility)
     output logic [31:0] rom_addr_o,
     output logic        rom_ren_o,
     input  logic [31:0] rom_rdata_i,
+    output logic [31:0] rom_wdata_o,
+    output logic        rom_wen_o,
+    output logic [2:0]  rom_funct3_o,
 
     // RAM
     output logic [31:0] ram_addr_o,
@@ -72,6 +75,8 @@ module mem_map (
 
     // Forward address and data to all devices
     assign rom_addr_o   = addr_i;
+    assign rom_wdata_o  = wdata_i;
+    assign rom_funct3_o = funct3_i;
     assign ram_addr_o   = addr_i;
     assign ram_wdata_o  = wdata_i;
     assign ram_funct3_o = funct3_i;
@@ -89,8 +94,8 @@ module mem_map (
     assign kbd_wdata_o = wdata_i;
 
     // Write enables: only the selected device gets the write
-    // (ROM is never written)
     always_comb begin
+        rom_wen_o   = 1'b0;
         ram_wen_o   = 1'b0;
         uart_wen_o  = 1'b0;
         timer_wen_o = 1'b0;
@@ -98,6 +103,7 @@ module mem_map (
         kbd_wen_o   = 1'b0;
 
         case (sel)
+            SEL_ROM:   rom_wen_o   = wen_i;
             SEL_RAM:   ram_wen_o   = wen_i;
             SEL_UART:  uart_wen_o  = wen_i;
             SEL_TIMER: timer_wen_o = wen_i;

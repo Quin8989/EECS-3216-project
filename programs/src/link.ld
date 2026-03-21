@@ -2,15 +2,15 @@
  *
  * Memory layout:
  *   ROM:  0x0100_0000  (instruction memory — loaded by $readmemh)
- *   RAM:  0x0200_0000  (64 KB data memory)
+ *   RAM:  0x0200_0000  (8 KB data memory)
  */
 
 ENTRY(_start)
 
 MEMORY
 {
-    ROM (rx)  : ORIGIN = 0x01000000, LENGTH = 64K
-    RAM (rwx) : ORIGIN = 0x02000000, LENGTH = 64K
+    ROM (rx)  : ORIGIN = 0x01000000, LENGTH = 4K
+    RAM (rwx) : ORIGIN = 0x02000000, LENGTH = 8K
 }
 
 SECTIONS

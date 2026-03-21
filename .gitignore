@@ -7,6 +7,8 @@ transcript
 *.log
 
 # Quartus artifacts
+constraints/db/
+constraints/incremental_db/
 db/
 incremental_db/
 output_files/
@@ -21,3 +23,7 @@ output_files/
 # Packages
 *.tar.gz
 vish_stacktrace.vstf
+
+# Junk files
+1
+2

@@ -16,7 +16,11 @@ module cpu #(
     output logic [2:0]        dmem_funct3_o,
     // ROM data-bus read port (pass-through to fetch)
     input  logic [AWIDTH-1:0] rom_daddr_i,
-    output logic [DWIDTH-1:0] rom_drdata_o
+    output logic [DWIDTH-1:0] rom_drdata_o,
+    // ROM data-bus write port (pass-through to fetch)
+    input  logic              rom_dwen_i,
+    input  logic [DWIDTH-1:0] rom_dwdata_i,
+    input  logic [2:0]        rom_dfunct3_i
 );
 
     // --- Fetch ---
@@ -35,8 +39,11 @@ module cpu #(
         .brtaken_i    (brtaken),
         .pc_o         (pc),
         .insn_o       (insn),
-        .rom_daddr_i  (rom_daddr_i),
-        .rom_drdata_o (rom_drdata_o)
+        .rom_daddr_i    (rom_daddr_i),
+        .rom_drdata_o   (rom_drdata_o),
+        .rom_dwen_i     (rom_dwen_i),
+        .rom_dwdata_i   (rom_dwdata_i),
+        .rom_dfunct3_i  (rom_dfunct3_i)
     );
 
     // --- Decode (inlined) ---
