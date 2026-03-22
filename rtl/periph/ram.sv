@@ -18,7 +18,6 @@ module ram #(
     input  logic [AWIDTH-1:0] addr_i,
     input  logic [DWIDTH-1:0] data_i,
     input  logic              wen_i,
-    input  logic              ren_i,
     input  logic [2:0]        funct3_i,
     output logic [DWIDTH-1:0] data_o
 );
@@ -41,12 +40,15 @@ module ram #(
     (* ramstyle = "no_rw_check" *)  logic [7:0] bank2 [0:WORDS-1];
     (* ramstyle = "no_rw_check" *)  logic [7:0] bank3 [0:WORDS-1];
 
-    // ── combinational read ──
+    // ── synchronous read (posedge-registered for M9K inference) ──
     logic [7:0]  rd0, rd1, rd2, rd3;
-    assign rd0 = bank0[waddr];
-    assign rd1 = bank1[waddr];
-    assign rd2 = bank2[waddr];
-    assign rd3 = bank3[waddr];
+
+    always_ff @(posedge clk) begin
+        rd0 <= bank0[waddr];
+        rd1 <= bank1[waddr];
+        rd2 <= bank2[waddr];
+        rd3 <= bank3[waddr];
+    end
 
     logic [31:0] word_rd;
     logic [7:0]  byte_rd;

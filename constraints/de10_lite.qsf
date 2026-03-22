@@ -19,7 +19,8 @@ set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
 set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 256
 set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 200 LFPM AIRFLOW"
 set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (COVERAGE)"
-set_global_assignment -name NUM_PARALLEL_PROCESSORS 2
+set_global_assignment -name INTERNAL_FLASH_UPDATE_MODE "SINGLE COMP IMAGE WITH ERAM"
+set_global_assignment -name NUM_PARALLEL_PROCESSORS ALL
 set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
@@ -34,24 +35,16 @@ set_global_assignment -name SEARCH_PATH ../rtl/periph
 # Verilog macros for $readmemh paths (relative to constraints/ working dir)
 set_global_assignment -name VERILOG_MACRO "MEM_PATH=\"../programs/demo.x\""
 set_global_assignment -name VERILOG_MACRO "FONT_PATH=\"../data/font8x8.hex\""
+set_global_assignment -name VERILOG_MACRO "SYNTHESIS=1"
 
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/constants.svh
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/register_file.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/branch_control.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/execute.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/igen.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/control.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/fetch.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/cpu.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/ram.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/uart_tx.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/uart.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/timer.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/vga_timing.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/vga_text.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/ps2_rx.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/keyboard.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/mem_map.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/top.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/top_fpga.sv
 
@@ -70,19 +63,6 @@ set_location_assignment PIN_P11 -to MAX10_CLK1_50
 
 # ── Push-buttons (active low) ──────────────────────────────────────────────
 set_location_assignment PIN_B8 -to KEY[0]
-set_location_assignment PIN_A7 -to KEY[1]
-
-# ── Slide switches ─────────────────────────────────────────────────────────
-set_location_assignment PIN_C10 -to SW[0]
-set_location_assignment PIN_C11 -to SW[1]
-set_location_assignment PIN_D12 -to SW[2]
-set_location_assignment PIN_C12 -to SW[3]
-set_location_assignment PIN_A12 -to SW[4]
-set_location_assignment PIN_B12 -to SW[5]
-set_location_assignment PIN_A13 -to SW[6]
-set_location_assignment PIN_A14 -to SW[7]
-set_location_assignment PIN_B14 -to SW[8]
-set_location_assignment PIN_F15 -to SW[9]
 
 # ── LEDs (active high) ─────────────────────────────────────────────────────
 set_location_assignment PIN_A8  -to LEDR[0]
@@ -123,10 +103,13 @@ set_location_assignment PIN_N1  -to VGA_VS
 # GPIO[0] = UART TX
 set_location_assignment PIN_V10 -to GPIO[0]
 
+# ── UART RX (GPIO header J1 pin 4) ─────────────────────────────────────────
+set_location_assignment PIN_W9 -to UART_RX
+
 # ── PS/2 keyboard (wired to GPIO header J1) ────────────────────────────────
 # PS2_CLK → GPIO[1] = PIN_W10
 # PS2_DAT → GPIO[2] = PIN_V9
 # Wire PS/2 connector CLK/DATA to these GPIO pins + pull-ups to 3.3V
 set_location_assignment PIN_W10 -to PS2_CLK
 set_location_assignment PIN_V9  -to PS2_DAT
-set_global_assignment -name LAST_QUARTUS_VERSION "20.1.0 Lite Edition"
+set_global_assignment -name LAST_QUARTUS_VERSION "25.1std.0 Lite Edition"

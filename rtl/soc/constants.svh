@@ -15,7 +15,6 @@
 `define OPC_SYSTEM  7'b111_0011
 
 // Funct7
-`define FUNCT7_STD  7'h00
 `define FUNCT7_ALT  7'h20
 
 // Funct3 (R/I-type)

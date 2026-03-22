@@ -11,6 +11,7 @@ module top (
     output logic       vga_vsync,
     // UART
     output logic       uart_tx_o,
+    input  logic       uart_rx_i,
     // PS/2 keyboard
     input  logic       ps2_clk_i,
     input  logic       ps2_data_i
@@ -23,24 +24,24 @@ module top (
 
     // Device buses
     logic [31:0] rom_addr,   rom_rdata,   rom_word,  rom_wdata;
-    logic        rom_ren,    rom_wen;
+    logic        rom_wen;
     logic [2:0]  rom_funct3;
 
     logic [31:0] ram_addr,   ram_wdata,   ram_rdata;
-    logic        ram_wen,    ram_ren;
+    logic        ram_wen;
     logic [2:0]  ram_funct3;
 
     logic [31:0] uart_addr,  uart_wdata,  uart_rdata;
     logic        uart_wen,   uart_ren;
 
     logic [31:0] timer_addr, timer_wdata, timer_rdata;
-    logic        timer_wen,  timer_ren;
+    logic        timer_wen;
 
     logic [31:0] vga_addr,   vga_wdata,   vga_rdata;
-    logic        vga_wen,    vga_ren;
+    logic        vga_wen;
 
-    logic [31:0] kbd_addr,   kbd_wdata,   kbd_rdata;
-    logic        kbd_wen,    kbd_ren;
+    logic [31:0] kbd_addr,   kbd_rdata;
+    logic        kbd_ren;
 
     cpu u_cpu (
         .clk           (clk),
@@ -58,57 +59,81 @@ module top (
         .rom_dfunct3_i (rom_funct3)
     );
 
-    // Memory map
-    mem_map u_mem_map (
-        .addr_i     (dmem_addr),
-        .wdata_i    (dmem_wdata),
-        .wen_i      (dmem_wen),
-        .ren_i      (dmem_ren),
-        .funct3_i   (dmem_funct3),
-        .rdata_o    (dmem_rdata),
+    // ── Memory map (inlined from mem_map.sv) ──────────────
+    // Address map:
+    //   0x0100_0000  ROM      0x0200_0000  RAM
+    //   0x1000_0000  UART     0x2000_0000  Timer
+    //   0x3000_0000  VGA      0x4000_0000  Keyboard
 
-        .rom_addr_o  (rom_addr),
-        .rom_ren_o   (rom_ren),
-        .rom_rdata_i (rom_rdata),
-        .rom_wdata_o (rom_wdata),
-        .rom_wen_o   (rom_wen),
-        .rom_funct3_o(rom_funct3),
+    logic [7:0] sel;
+    assign sel = dmem_addr[31:24];
 
-        .ram_addr_o   (ram_addr),
-        .ram_wdata_o  (ram_wdata),
-        .ram_wen_o    (ram_wen),
-        .ram_ren_o    (ram_ren),
-        .ram_funct3_o (ram_funct3),
-        .ram_rdata_i  (ram_rdata),
+    localparam SEL_ROM   = 8'h01;
+    localparam SEL_RAM   = 8'h02;
+    localparam SEL_UART  = 8'h10;
+    localparam SEL_TIMER = 8'h20;
+    localparam SEL_VGA   = 8'h30;
+    localparam SEL_KBD   = 8'h40;
 
-        .uart_addr_o  (uart_addr),
-        .uart_wdata_o (uart_wdata),
-        .uart_wen_o   (uart_wen),
-        .uart_ren_o   (uart_ren),
-        .uart_rdata_i (uart_rdata),
+    // Forward address and data to all devices
+    assign rom_addr     = dmem_addr;
+    assign rom_wdata    = dmem_wdata;
+    assign rom_funct3   = dmem_funct3;
+    assign ram_addr     = dmem_addr;
+    assign ram_wdata    = dmem_wdata;
+    assign ram_funct3   = dmem_funct3;
+    assign uart_addr    = dmem_addr;
+    assign uart_wdata   = dmem_wdata;
+    assign timer_addr   = dmem_addr;
+    assign timer_wdata  = dmem_wdata;
+    assign vga_addr     = dmem_addr;
+    assign vga_wdata    = dmem_wdata;
+    assign kbd_addr     = dmem_addr;
 
-        .timer_addr_o  (timer_addr),
-        .timer_wdata_o (timer_wdata),
-        .timer_wen_o   (timer_wen),
-        .timer_ren_o   (timer_ren),
-        .timer_rdata_i (timer_rdata),
+    // Write enables: only the selected device gets the write
+    always_comb begin
+        rom_wen   = 1'b0;
+        ram_wen   = 1'b0;
+        uart_wen  = 1'b0;
+        timer_wen = 1'b0;
+        vga_wen   = 1'b0;
 
-        .vga_addr_o  (vga_addr),
-        .vga_wdata_o (vga_wdata),
-        .vga_wen_o   (vga_wen),
-        .vga_ren_o   (vga_ren),
-        .vga_rdata_i (vga_rdata),
+        case (sel)
+            SEL_ROM:   rom_wen   = dmem_wen;
+            SEL_RAM:   ram_wen   = dmem_wen;
+            SEL_UART:  uart_wen  = dmem_wen;
+            SEL_TIMER: timer_wen = dmem_wen;
+            SEL_VGA:   vga_wen   = dmem_wen;
+            default:   ;
+        endcase
+    end
 
-        .kbd_addr_o  (kbd_addr),
-        .kbd_wdata_o (kbd_wdata),
-        .kbd_wen_o   (kbd_wen),
-        .kbd_ren_o   (kbd_ren),
-        .kbd_rdata_i (kbd_rdata)
-    );
+    // Read enables (only for peripherals with read side-effects)
+    always_comb begin
+        uart_ren = 1'b0;
+        kbd_ren  = 1'b0;
+
+        case (sel)
+            SEL_UART: uart_ren = dmem_ren;
+            SEL_KBD:  kbd_ren  = dmem_ren;
+            default:  ;
+        endcase
+    end
+
+    // Read data mux
+    always_comb begin
+        case (sel)
+            SEL_ROM:   dmem_rdata = rom_rdata;
+            SEL_RAM:   dmem_rdata = ram_rdata;
+            SEL_UART:  dmem_rdata = uart_rdata;
+            SEL_TIMER: dmem_rdata = timer_rdata;
+            SEL_VGA:   dmem_rdata = vga_rdata;
+            SEL_KBD:   dmem_rdata = kbd_rdata;
+            default:   dmem_rdata = 32'hDEAD_BEEF;
+        endcase
+    end
 
     // Byte extraction for ROM data-bus reads
-    // rom_word comes from cpu → fetch (shared instruction ROM, dual-port read)
-
     logic [1:0]  rom_byte_off;
     assign rom_byte_off = rom_addr[1:0];
 
@@ -133,7 +158,6 @@ module top (
         .addr_i   (ram_addr),
         .data_i   (ram_wdata),
         .wen_i    (ram_wen),
-        .ren_i    (ram_ren),
         .funct3_i (ram_funct3),
         .data_o   (ram_rdata)
     );
@@ -147,7 +171,8 @@ module top (
         .wen_i   (uart_wen),
         .ren_i   (uart_ren),
         .rdata_o (uart_rdata),
-        .tx_o    (uart_tx_o)
+        .tx_o    (uart_tx_o),
+        .rx_i    (uart_rx_i)
     );
 
     // Timer
@@ -157,7 +182,6 @@ module top (
         .addr_i  (timer_addr),
         .wdata_i (timer_wdata),
         .wen_i   (timer_wen),
-        .ren_i   (timer_ren),
         .rdata_o (timer_rdata)
     );
 
@@ -166,8 +190,6 @@ module top (
         .clk        (clk),
         .rst        (reset),
         .addr_i     (kbd_addr),
-        .wdata_i    (kbd_wdata),
-        .wen_i      (kbd_wen),
         .ren_i      (kbd_ren),
         .rdata_o    (kbd_rdata),
         .ps2_clk_i  (ps2_clk_i),
@@ -190,7 +212,6 @@ module top (
         .addr_i    (vga_addr),
         .wdata_i   (vga_wdata),
         .wen_i     (vga_wen),
-        .ren_i     (vga_ren),
         .rdata_o   (vga_rdata),
         .clk_pixel (clk_pixel),
         .vga_r     (vga_r),

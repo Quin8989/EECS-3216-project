@@ -5,17 +5,14 @@
 //   - KEY[0] (active-low) → synchronised reset
 //   - VGA DAC (4-bit RGB, HSYNC, VSYNC)
 //   - LEDR[9:0] accent LEDs (active-high) for debug
-//   - GPIO[0] reserved for UART TX (active when real TX is added)
+//   - GPIO[0] = UART TX, UART_RX = serial input
 
 module top_fpga (
     // ── Clock ──────────────────────────────────────
     input  logic        MAX10_CLK1_50,
 
-    // ── Push-buttons (active low) ─────────────────
-    input  logic [1:0]  KEY,
-
-    // ── Slide switches ────────────────────────────
-    input  logic [9:0]  SW,
+    // ── Push-button (active low) ──────────────────
+    input  logic [0:0]  KEY,
 
     // ── LEDs (active high) ────────────────────────
     output logic [9:0]  LEDR,
@@ -29,6 +26,9 @@ module top_fpga (
 
     // ── GPIO header ──────────────────────────────────
     output logic [0:0]  GPIO,  // GPIO[0] = UART TX
+
+    // ── UART RX ──────────────────────────────────────
+    input  logic        UART_RX,
 
     // ── PS/2 keyboard (directly on FPGA pads) ─────────
     input  logic        PS2_CLK,
@@ -59,6 +59,7 @@ module top_fpga (
         .vga_hsync (VGA_HS),
         .vga_vsync (VGA_VS),
         .uart_tx_o (uart_tx_w),
+        .uart_rx_i (UART_RX),
         .ps2_clk_i (PS2_CLK),
         .ps2_data_i(PS2_DAT)
     );
@@ -68,7 +69,7 @@ module top_fpga (
     logic [24:0] hb_cnt;
     always_ff @(posedge MAX10_CLK1_50) begin
         if (reset) hb_cnt <= '0;
-        else       hb_cnt <= hb_cnt + 1;
+        else       hb_cnt <= hb_cnt + 25'd1;
     end
     assign LEDR[0] = hb_cnt[24];
 

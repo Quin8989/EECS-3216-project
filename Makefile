@@ -1,13 +1,24 @@
 # EECS 3216 Project
 #
 # Usage:
-#   make compile          Compile with ModelSim
-#   make run              Compile + simulate
-#   make run TEST=test1   Simulate a specific program
-#   make clean            Remove build artifacts
+#   make compile              Compile with iverilog (or SIM=questa for Questa)
+#   make run                  Compile + simulate
+#   make run TEST=test1       Simulate a specific program
+#   make run-all              Compile + run every ISA test
+#   make clean                Remove build artifacts
+#
+# Simulator selection:  SIM=iverilog (default)  or  SIM=questa
 
 TEST     ?= test1
-ROOT     := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
+SIM      ?= iverilog
+
+# Convert MSYS /c/… paths to C:/… so Questa/ModelSim can resolve them.
+ifeq ($(OS),Windows_NT)
+  ROOT := $(shell cygpath -m "$(realpath $(dir $(lastword $(MAKEFILE_LIST))))")
+else
+  ROOT := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
+endif
+
 FONT_PATH := $(ROOT)/data/font8x8.hex
 
 # Find test hex: check programs/ first, then programs/isa-tests/
@@ -18,29 +29,64 @@ else
 endif
 
 SRC := $(addprefix $(ROOT)/rtl/, $(shell cat $(ROOT)/design.f)) \
-       $(ROOT)/tb/clockgen.sv \
        $(ROOT)/tb/test_top.sv
 
+ISA_TESTS := $(basename $(notdir $(wildcard $(ROOT)/programs/isa-tests/*.x)))
+
+INC_DIRS := $(ROOT)/rtl/soc $(ROOT)/rtl/cpu $(ROOT)/rtl/periph $(ROOT)/tb
+
+# ---------- iverilog / vvp ----------
+ifeq ($(SIM),iverilog)
+
+IVFLAGS := -g2012 $(addprefix -I ,$(INC_DIRS)) \
+           -DMEM_PATH=\"$(MEM_PATH)\" \
+           -DFONT_PATH=\"$(FONT_PATH)\"
+VVP     := $(ROOT)/work/sim.vvp
+
 compile:
-	@echo "=== Compile ==="
+	@echo "=== Compile (iverilog) ==="
+	@mkdir -p $(ROOT)/work
+	iverilog $(IVFLAGS) -o $(VVP) $(SRC)
+
+run: compile
+	@echo "=== Run (vvp) ==="
+	vvp $(VVP)
+
+# ---------- Questa / ModelSim ----------
+else ifeq ($(SIM),questa)
+
+compile:
+	@echo "=== Compile (Questa) ==="
 	vlog -work $(ROOT)/work \
 		-suppress 7061 -sv \
-		+incdir+$(ROOT)/rtl/soc \
-		+incdir+$(ROOT)/rtl/cpu \
-		+incdir+$(ROOT)/rtl/periph \
-		+incdir+$(ROOT)/tb \
+		$(addprefix +incdir+,$(INC_DIRS)) \
 		"+define+MEM_PATH=\"$(MEM_PATH)\"" \
 		"+define+FONT_PATH=\"$(FONT_PATH)\"" \
 		$(SRC)
 
 run: compile
-	@echo "=== Run ==="
+	@echo "=== Run (vsim) ==="
 	@echo "run -all" > $(ROOT)/run.macro
 	vsim -suppress 3839 -c \
 		-do $(ROOT)/run.macro \
 		$(ROOT)/work.test_top
 
+endif
+
+# ---------- Run all ISA tests ----------
+run-all:
+	@pass=0; fail=0; \
+	for t in $(ISA_TESTS); do \
+		result=$$($(MAKE) --no-print-directory run TEST=$$t 2>&1); \
+		if echo "$$result" | grep -q "PASS"; then \
+			echo "PASS  $$t"; pass=$$((pass+1)); \
+		else \
+			echo "FAIL  $$t"; fail=$$((fail+1)); \
+		fi; \
+	done; \
+	echo ""; echo "=== $$pass passed, $$fail failed ==="
+
 clean:
 	rm -rf $(ROOT)/work $(ROOT)/run.macro
 
-.PHONY: compile run clean
+.PHONY: compile run run-all clean

@@ -14,7 +14,6 @@ module timer (
     input  logic [31:0] addr_i,
     input  logic [31:0] wdata_i,
     input  logic        wen_i,
-    input  logic        ren_i,
     output logic [31:0] rdata_o
 );
 
