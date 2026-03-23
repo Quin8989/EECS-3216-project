@@ -45,7 +45,16 @@ module fetch #(
     (* ramstyle = "no_rw_check" *)  logic [7:0] bank2 [0:DEPTH-1];
     (* ramstyle = "no_rw_check" *)  logic [7:0] bank3 [0:DEPTH-1];
 
-    // Initialise banks from a single 32-bit hex file
+    // Initialise banks
+`ifdef SYNTHESIS
+    // Direct per-bank $readmemh — Quartus can resolve these for M9K init.
+    // (The for-loop copy pattern from a 32-bit array is not supported.)
+    initial $readmemh("../data/rom_bank0.hex", bank0);
+    initial $readmemh("../data/rom_bank1.hex", bank1);
+    initial $readmemh("../data/rom_bank2.hex", bank2);
+    initial $readmemh("../data/rom_bank3.hex", bank3);
+`else
+    // Simulation: read 32-bit hex file and split into byte lanes
     integer i;
     logic [31:0] imem_init [0:DEPTH-1];
     initial begin
@@ -57,6 +66,7 @@ module fetch #(
             bank3[i] = imem_init[i][31:24];
         end
     end
+`endif
 
     // ── Instruction read (port A) — synchronous pre-fetch ──
     // Address for NEXT cycle's instruction, computed combinationally

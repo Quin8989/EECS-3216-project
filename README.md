@@ -95,6 +95,8 @@ tb/
 data/
   font8x8.hex           8×8 bitmap font for simulation ($readmemh)
   font8x8.mif           Same font in Altera MIF format for synthesis (altsyncram)
+  rom_bank[0-3].hex     Per-bank byte-lane hex files for ROM M9K init (synthesis)
+  rom_bank[0-3].mif     Per-bank MIF files (alternative format, not currently used)
 
 programs/
   isa-tests/            38 RISC-V rv32ui compliance tests (.x hex files)
@@ -255,10 +257,35 @@ I/O delays are set to relaxed values because the external interfaces (VGA DAC, b
 With the DE10-Lite connected via USB-Blaster:
 
 ```bash
-quartus_pgm -m jtag -o "p;output_files/de10_lite.sof"
+quartus_pgm -m jtag -o "p;de10_lite.sof"
 ```
 
-This loads the bitstream into SRAM (volatile). For non-volatile programming to internal flash, use the Quartus Programmer GUI and select `.pof` generation.
+The `.sof` is in the `constraints/` directory (placed there by the Quartus project). This loads the bitstream into SRAM (volatile — lost on power-off). For non-volatile programming to internal flash, use the Quartus Programmer GUI and select `.pof` generation.
+
+### Changing the Program
+
+If you replace `demo.x` with a different program or recompile one:
+1. Place the new 32-bit hex file at `programs/<name>.x`
+2. Update the `MEM_PATH` macro in the `.qsf` if the filename changed
+3. **Regenerate per-bank hex files** (required for ROM M9K initialization):
+   ```powershell
+   # PowerShell — run from project root
+   $lines = Get-Content "programs\demo.x" | Where-Object { $_ -match '^[0-9A-Fa-f]+$' }
+   $depth = 1024
+   foreach($b in 0..3) {
+       $offset = $b * 2
+       $content = ""
+       for($i=0; $i -lt $depth; $i++) {
+           if($i -lt $lines.Count) {
+               $w = $lines[$i].PadLeft(8,'0')
+               $byte = $w.Substring(6 - $offset, 2)
+               $content += "$byte`n"
+           } else { $content += "00`n" }
+       }
+       Set-Content -Path "data\rom_bank${b}.hex" -Value $content.TrimEnd() -NoNewline
+   }
+   ```
+4. Re-run `quartus_sh --flow compile de10_lite` and flash
 
 ---
 
@@ -337,6 +364,39 @@ The design was originally split into 21 RTL files (one per small submodule), plu
 - `clockgen.sv` → inlined into `test_top.sv`
 
 This reduced cross-file dependencies and made synthesis debug easier, since each file is self-contained.
+
+### 7.4 ROM Bank Initialization
+
+**Problem:** The original instruction ROM used a `$readmemh` into a 32-bit array followed by a `for`-loop to split bytes into 4 banks. Quartus's synthesis engine **cannot evaluate this pattern** — the `initial` block is treated as non-constant, producing warning 10855: *"initial value for variable bank0 should be constant."* The M9K blocks power up with all zeros, so the CPU has no program.
+
+**Solution:** Under `` `ifdef SYNTHESIS``, each bank loads its own per-bank hex file directly:
+```systemverilog
+initial $readmemh("../data/rom_bank0.hex", bank0);
+initial $readmemh("../data/rom_bank1.hex", bank1);
+initial $readmemh("../data/rom_bank2.hex", bank2);
+initial $readmemh("../data/rom_bank3.hex", bank3);
+```
+The per-bank hex files are generated from the 32-bit program hex file (`demo.x`) by extracting byte lanes 0–3. A PowerShell script in the project root generates them. **If you change the program, you must regenerate the bank hex files before re-synthesizing.**
+
+---
+
+## 8. Debug LEDs
+
+The FPGA wrapper (`top_fpga.sv`) maps the 10 red LEDs on the DE10-Lite as follows:
+
+| LED | Signal | Meaning |
+|---|---|---|
+| LEDR[0] | `hb_cnt[24]` | Heartbeat — blinks at ~1.5 Hz (~90 BPM) confirming the clock is running |
+| LEDR[1] | `reset` | Lit while KEY[0] is held (reset active) |
+| LEDR[2] | `dbg_vga_wr` | Latches ON after the first VGA text-buffer write — proves the CPU reached the `vga_puts` call |
+| LEDR[3] | `dbg_pc != 0x0100_0000` | Lit if the PC has moved from the reset vector — proves the CPU is executing |
+| LEDR[9:4] | `dbg_pc[7:2]` | Lower 6 bits of the instruction word-address — flicker rapidly while CPU runs, freeze if stuck |
+
+**Quick diagnostic checklist:**
+- **Only LEDR[0] blinks, LEDR[2–9] dark:** ROM is empty — regenerate per-bank hex files.
+- **LEDR[3] lit but LEDR[2] dark:** CPU runs but never writes to VGA — address decode or program bug.
+- **LEDR[2] lit, screen black:** Text buffer written but VGA pipeline issue — check `clk_pixel` or font ROM.
+- **All LEDR[9:4] frozen at one value:** CPU is stuck in a loop or has hit an illegal instruction.
 
 ---
 

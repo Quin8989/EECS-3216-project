@@ -20,11 +20,14 @@ module cpu #(
     // ROM data-bus write port (pass-through to fetch)
     input  logic              rom_dwen_i,
     input  logic [DWIDTH-1:0] rom_dwdata_i,
-    input  logic [2:0]        rom_dfunct3_i
+    input  logic [2:0]        rom_dfunct3_i,
+    // Debug
+    output logic [AWIDTH-1:0]  dbg_pc_o
 );
 
     // --- Fetch ---
     logic [AWIDTH-1:0] pc;
+    assign dbg_pc_o = pc;
     logic [DWIDTH-1:0] insn;
     logic [DWIDTH-1:0] alu_res;
     logic              brtaken;

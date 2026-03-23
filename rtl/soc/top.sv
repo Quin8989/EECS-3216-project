@@ -14,7 +14,10 @@ module top (
     input  logic       uart_rx_i,
     // PS/2 keyboard
     input  logic       ps2_clk_i,
-    input  logic       ps2_data_i
+    input  logic       ps2_data_i,
+    // Debug
+    output logic [31:0] dbg_pc_o,
+    output logic        dbg_vga_wr_o
 );
 
     // CPU data bus
@@ -43,6 +46,17 @@ module top (
     logic [31:0] kbd_addr,   kbd_rdata;
     logic        kbd_ren;
 
+    // Debug: expose PC from fetch unit
+    logic [31:0] pc_w;
+    assign dbg_pc_o = pc_w;
+
+    // Debug: latch if any VGA write ever occurred
+    logic vga_wr_seen;
+    always_ff @(posedge clk)
+        if (reset) vga_wr_seen <= 1'b0;
+        else if (vga_wen) vga_wr_seen <= 1'b1;
+    assign dbg_vga_wr_o = vga_wr_seen;
+
     cpu u_cpu (
         .clk           (clk),
         .reset         (reset),
@@ -56,7 +70,8 @@ module top (
         .rom_drdata_o  (rom_word),
         .rom_dwen_i    (rom_wen),
         .rom_dwdata_i  (rom_wdata),
-        .rom_dfunct3_i (rom_funct3)
+        .rom_dfunct3_i (rom_funct3),
+        .dbg_pc_o      (pc_w)
     );
 
     // ── Memory map (inlined from mem_map.sv) ──────────────

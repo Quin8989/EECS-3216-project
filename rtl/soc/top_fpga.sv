@@ -49,19 +49,23 @@ module top_fpga (
 
     // ── SoC ───────────────────────────────────────
     logic uart_tx_w;
+    logic [31:0] dbg_pc;
+    logic        dbg_vga_wr;
 
     top u_soc (
-        .clk       (MAX10_CLK1_50),
-        .reset     (reset),
-        .vga_r     (VGA_R),
-        .vga_g     (VGA_G),
-        .vga_b     (VGA_B),
-        .vga_hsync (VGA_HS),
-        .vga_vsync (VGA_VS),
-        .uart_tx_o (uart_tx_w),
-        .uart_rx_i (UART_RX),
-        .ps2_clk_i (PS2_CLK),
-        .ps2_data_i(PS2_DAT)
+        .clk          (MAX10_CLK1_50),
+        .reset        (reset),
+        .vga_r        (VGA_R),
+        .vga_g        (VGA_G),
+        .vga_b        (VGA_B),
+        .vga_hsync    (VGA_HS),
+        .vga_vsync    (VGA_VS),
+        .uart_tx_o    (uart_tx_w),
+        .uart_rx_i    (UART_RX),
+        .ps2_clk_i    (PS2_CLK),
+        .ps2_data_i   (PS2_DAT),
+        .dbg_pc_o     (dbg_pc),
+        .dbg_vga_wr_o (dbg_vga_wr)
     );
 
     // ── Debug LEDs ────────────────────────────────
@@ -76,8 +80,14 @@ module top_fpga (
     // LEDR[1]: reset active indicator
     assign LEDR[1] = reset;
 
-    // LEDR[9:2]: unused — tie off
-    assign LEDR[9:2] = '0;
+    // LEDR[2]: VGA write ever occurred
+    assign LEDR[2] = dbg_vga_wr;
+
+    // LEDR[3]: PC has left reset address (CPU is running)
+    assign LEDR[3] = (dbg_pc != 32'h0100_0000);
+
+    // LEDR[9:4]: PC bits [7:2] (instruction offset, changes as CPU executes)
+    assign LEDR[9:4] = dbg_pc[7:2];
 
     // ── GPIO: UART TX ────────────────────────────
     assign GPIO[0] = uart_tx_w;
