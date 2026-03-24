@@ -93,7 +93,12 @@ module top_fpga (
     logic        sdram_we, sdram_req, sdram_ack;
     typedef enum logic [1:0] {RESP_NONE, RESP_CPU, RESP_VGA, RESP_JTAG} resp_t;
     resp_t read_resp_target;
-    logic grant_cpu, grant_vga, grant_jtag;
+    logic grant_cpu, grant_vga, grant_jtag, grant_jtag_sdram;
+
+    localparam logic [31:0] JTAG_KBD_INJECT_ADDR = 32'h4FFF_FF00;
+    logic       jtag_kbd_inject_hit;
+    logic       jtag_kbd_valid;
+    logic [7:0] jtag_kbd_code;
 
     // Intel JTAG-to-Avalon Master IP
     jtag_master u_jtag_master (
@@ -111,17 +116,38 @@ module top_fpga (
 
     // ── SDRAM Arbitration ─────────────────────────
     // Priority: JTAG > CPU > VGA. Only one read response may be outstanding.
-    assign grant_jtag = (read_resp_target == RESP_NONE) && (jtag_master_read | jtag_master_write);
+    // A reserved JTAG write address injects keyboard scan codes directly.
+    assign jtag_kbd_inject_hit = (read_resp_target == RESP_NONE)
+                              && jtag_master_write
+                              && (jtag_master_addr == JTAG_KBD_INJECT_ADDR);
+    assign grant_jtag_sdram = (read_resp_target == RESP_NONE)
+                           && (jtag_master_read | jtag_master_write)
+                           && !jtag_kbd_inject_hit;
+    assign grant_jtag = grant_jtag_sdram | jtag_kbd_inject_hit;
     assign grant_cpu  = (read_resp_target == RESP_NONE) && !grant_jtag && cpu_sdram_req;
     assign grant_vga  = (read_resp_target == RESP_NONE) && !grant_jtag && !grant_cpu && vga_sdram_req;
 
     assign cpu_sdram_ack = grant_cpu & sdram_ack;
     assign vga_sdram_ack = grant_vga & sdram_ack;
-    assign jtag_master_waitrequest = (jtag_master_read | jtag_master_write) & ~(grant_jtag & sdram_ack);
+    assign jtag_master_waitrequest = (jtag_master_read | jtag_master_write)
+                                  && !((grant_jtag_sdram && sdram_ack) || jtag_kbd_inject_hit);
     assign jtag_master_readdatavalid = sdram_valid & (read_resp_target == RESP_JTAG);
     assign jtag_master_rdata = sdram_q;
     assign cpu_sdram_valid = sdram_valid & (read_resp_target == RESP_CPU);
     assign vga_sdram_valid = sdram_valid & (read_resp_target == RESP_VGA);
+
+    always_ff @(posedge clk_25m) begin
+        if (reset) begin
+            jtag_kbd_valid <= 1'b0;
+            jtag_kbd_code  <= 8'h00;
+        end else begin
+            jtag_kbd_valid <= 1'b0;
+            if (jtag_kbd_inject_hit) begin
+                jtag_kbd_valid <= 1'b1;
+                jtag_kbd_code  <= jtag_master_wdata[7:0];
+            end
+        end
+    end
 
     always_comb begin
         sdram_addr  = 24'd0;
@@ -129,7 +155,7 @@ module top_fpga (
         sdram_we    = 1'b0;
         sdram_req   = 1'b0;
 
-        if (grant_jtag) begin
+        if (grant_jtag_sdram) begin
             sdram_addr  = jtag_master_addr[25:2];
             sdram_wdata = jtag_master_wdata;
             sdram_we    = jtag_master_write;
@@ -152,7 +178,7 @@ module top_fpga (
             read_resp_target <= RESP_NONE;
         end else begin
             if (read_resp_target == RESP_NONE) begin
-                if (grant_jtag && sdram_ack && !jtag_master_write)
+                if (grant_jtag_sdram && sdram_ack && !jtag_master_write)
                     read_resp_target <= RESP_JTAG;
                 else if (grant_cpu && sdram_ack && !cpu_sdram_we)
                     read_resp_target <= RESP_CPU;
@@ -176,6 +202,8 @@ module top_fpga (
         .uart_rx_i    (1'b1),
         .ps2_clk_i    (PS2_CLK),
         .ps2_data_i   (PS2_DAT),
+        .jtag_kbd_valid_i(jtag_kbd_valid),
+        .jtag_kbd_code_i (jtag_kbd_code),
         .sdram_addr_o (cpu_sdram_addr),
         .sdram_wdata_o(cpu_sdram_wdata),
         .sdram_we_o   (cpu_sdram_we),
@@ -220,14 +248,6 @@ module top_fpga (
     // of the internal 25 MHz controller clock.
     assign DRAM_CLK = ~clk_25m;
 
-    // DQ tristate handled explicitly at top level (not through hierarchy)
-    logic [15:0] sdram_dq_o;
-    logic [15:0] sdram_dq_i;
-    logic        sdram_dq_oe;
-
-    assign DRAM_DQ   = sdram_dq_oe ? sdram_dq_o : 16'bz;
-    assign sdram_dq_i = DRAM_DQ;
-
     sdram_ctrl u_sdram_ctrl (
         .reset      (reset),
         .clk        (clk_25m),
@@ -240,9 +260,7 @@ module top_fpga (
         .q          (sdram_q),
         .sdram_a    (DRAM_ADDR),
         .sdram_ba   (DRAM_BA),
-        .sdram_dq_i (sdram_dq_i),
-        .sdram_dq_o (sdram_dq_o),
-        .sdram_dq_oe(sdram_dq_oe),
+        .sdram_dq   (DRAM_DQ),
         .sdram_cke  (DRAM_CKE),
         .sdram_cs_n (DRAM_CS_N),
         .sdram_ras_n(DRAM_RAS_N),

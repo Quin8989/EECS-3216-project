@@ -24,9 +24,7 @@ entity sdram_ctrl is
     -- SDRAM chip interface (directly to IS42S16320D pins)
     sdram_a     : out   std_logic_vector(12 downto 0);
     sdram_ba    : out   std_logic_vector(1 downto 0);
-    sdram_dq_i  : in    std_logic_vector(15 downto 0);
-    sdram_dq_o  : out   std_logic_vector(15 downto 0);
-    sdram_dq_oe : out   std_logic;
+    sdram_dq    : inout std_logic_vector(15 downto 0);
     sdram_cke   : out   std_logic;
     sdram_cs_n  : out   std_logic;
     sdram_ras_n : out   std_logic;
@@ -51,7 +49,7 @@ begin
       DATA_WIDTH       => 32,
       SDRAM_ADDR_WIDTH => 13,
       SDRAM_DATA_WIDTH => 16,
-      SDRAM_COL_WIDTH  => 10,
+      SDRAM_COL_WIDTH  => 9,
       SDRAM_ROW_WIDTH  => 13,
       SDRAM_BANK_WIDTH => 2,
       CAS_LATENCY      => 2,
@@ -69,9 +67,7 @@ begin
       q           => q,
       sdram_a     => sdram_a_u,
       sdram_ba    => sdram_ba_u,
-      sdram_dq_i  => sdram_dq_i,
-      sdram_dq_o  => sdram_dq_o,
-      sdram_dq_oe => sdram_dq_oe,
+      sdram_dq    => sdram_dq,
       sdram_cke   => sdram_cke,
       sdram_cs_n  => sdram_cs_n,
       sdram_ras_n => sdram_ras_n,
