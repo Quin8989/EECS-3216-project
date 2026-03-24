@@ -12,9 +12,21 @@ module top (
     // UART
     output logic       uart_tx_o,
     input  logic       uart_rx_i,
-    // PS/2 keyboard
+    // PS/2 keyboard (unused in headless build)
     input  logic       ps2_clk_i,
     input  logic       ps2_data_i,
+    // SDRAM controller bus
+    output logic [23:0] sdram_addr_o,
+    output logic [31:0] sdram_wdata_o,
+    output logic        sdram_we_o,
+    output logic        sdram_req_o,
+    input  logic        sdram_ack_i,
+    input  logic        sdram_valid_i,
+    output logic [23:0] vga_sdram_addr_o,
+    output logic        vga_sdram_req_o,
+    input  logic        vga_sdram_ack_i,
+    input  logic        vga_sdram_valid_i,
+    input  logic [31:0] sdram_q_i,
     // Debug
     output logic [31:0] dbg_pc_o,
     output logic        dbg_vga_wr_o
@@ -40,21 +52,21 @@ module top (
     logic [31:0] timer_addr, timer_wdata, timer_rdata;
     logic        timer_wen;
 
-    logic [31:0] vga_addr,   vga_wdata,   vga_rdata;
-    logic        vga_wen;
+    // SDRAM bridge
+    logic        sdram_stall, sdram_selected, sdram_access;
+    logic [31:0] sdram_word, sdram_rdata;
+    logic        dmem_raw_ren, dmem_raw_wen;
 
-    logic [31:0] kbd_addr,   kbd_rdata;
-    logic        kbd_ren;
+    localparam FB_BYTES = 320 * 240;
 
     // Debug: expose PC from fetch unit
     logic [31:0] pc_w;
     assign dbg_pc_o = pc_w;
 
-    // Debug: latch if any VGA write ever occurred
     logic vga_wr_seen;
     always_ff @(posedge clk)
         if (reset) vga_wr_seen <= 1'b0;
-        else if (vga_wen) vga_wr_seen <= 1'b1;
+        else if (dmem_raw_wen && sdram_selected && dmem_addr[25:0] < FB_BYTES) vga_wr_seen <= 1'b1;
     assign dbg_vga_wr_o = vga_wr_seen;
 
     cpu u_cpu (
@@ -66,6 +78,9 @@ module top (
         .dmem_wen_o    (dmem_wen),
         .dmem_ren_o    (dmem_ren),
         .dmem_funct3_o (dmem_funct3),
+        .dmem_raw_ren_o(dmem_raw_ren),
+        .dmem_raw_wen_o(dmem_raw_wen),
+        .mem_stall_i   (sdram_stall),
         .rom_daddr_i   (rom_addr),
         .rom_drdata_o  (rom_word),
         .rom_dwen_i    (rom_wen),
@@ -76,12 +91,16 @@ module top (
 
     // ── Memory map (inlined from mem_map.sv) ──────────────
     // Address map:
-    //   0x0100_0000  ROM      0x0200_0000  RAM
-    //   0x1000_0000  UART     0x2000_0000  Timer
-    //   0x3000_0000  VGA      0x4000_0000  Keyboard
+    //   0x0100_0000  ROM          0x0200_0000  RAM
+    //   0x1000_0000  UART TX      0x2000_0000  Timer
+    //   0x3000_0000  Reserved     0x4000_0000  Reserved
 
     logic [7:0] sel;
     assign sel = dmem_addr[31:24];
+
+    // SDRAM selected for 0x80xxxxxx only (bit 31)
+    assign sdram_selected = dmem_addr[31];
+    assign sdram_access   = sdram_selected & (dmem_raw_ren | dmem_raw_wen);
 
     localparam SEL_ROM   = 8'h01;
     localparam SEL_RAM   = 8'h02;
@@ -101,51 +120,47 @@ module top (
     assign uart_wdata   = dmem_wdata;
     assign timer_addr   = dmem_addr;
     assign timer_wdata  = dmem_wdata;
-    assign vga_addr     = dmem_addr;
-    assign vga_wdata    = dmem_wdata;
-    assign kbd_addr     = dmem_addr;
-
     // Write enables: only the selected device gets the write
     always_comb begin
         rom_wen   = 1'b0;
         ram_wen   = 1'b0;
         uart_wen  = 1'b0;
         timer_wen = 1'b0;
-        vga_wen   = 1'b0;
 
         case (sel)
             SEL_ROM:   rom_wen   = dmem_wen;
             SEL_RAM:   ram_wen   = dmem_wen;
             SEL_UART:  uart_wen  = dmem_wen;
             SEL_TIMER: timer_wen = dmem_wen;
-            SEL_VGA:   vga_wen   = dmem_wen;
             default:   ;
         endcase
     end
 
-    // Read enables (only for peripherals with read side-effects)
+    // Read enables
     always_comb begin
         uart_ren = 1'b0;
-        kbd_ren  = 1'b0;
 
         case (sel)
             SEL_UART: uart_ren = dmem_ren;
-            SEL_KBD:  kbd_ren  = dmem_ren;
             default:  ;
         endcase
     end
 
     // Read data mux
     always_comb begin
-        case (sel)
-            SEL_ROM:   dmem_rdata = rom_rdata;
-            SEL_RAM:   dmem_rdata = ram_rdata;
-            SEL_UART:  dmem_rdata = uart_rdata;
-            SEL_TIMER: dmem_rdata = timer_rdata;
-            SEL_VGA:   dmem_rdata = vga_rdata;
-            SEL_KBD:   dmem_rdata = kbd_rdata;
-            default:   dmem_rdata = 32'hDEAD_BEEF;
-        endcase
+        if (sdram_selected)
+            dmem_rdata = sdram_rdata;
+        else begin
+            case (sel)
+                SEL_ROM:   dmem_rdata = rom_rdata;
+                SEL_RAM:   dmem_rdata = ram_rdata;
+                SEL_UART:  dmem_rdata = uart_rdata;
+                SEL_TIMER: dmem_rdata = timer_rdata;
+                SEL_VGA:   dmem_rdata = 32'h0;
+                SEL_KBD:   dmem_rdata = 32'h0;
+                default:   dmem_rdata = 32'hDEAD_BEEF;
+            endcase
+        end
     end
 
     // Byte extraction for ROM data-bus reads
@@ -167,7 +182,7 @@ module top (
         endcase
     end
 
-    // Data RAM
+    // On-chip data RAM with byte extraction (uses registered addr/funct3)
     ram u_ram (
         .clk      (clk),
         .addr_i   (ram_addr),
@@ -200,40 +215,56 @@ module top (
         .rdata_o (timer_rdata)
     );
 
-    // Keyboard
-    keyboard u_kbd (
+    vga_fb u_vga (
+        .clk_pixel   (clk),
+        .rst         (reset),
+        .sdram_addr_o(vga_sdram_addr_o),
+        .sdram_req_o (vga_sdram_req_o),
+        .sdram_ack_i (vga_sdram_ack_i),
+        .sdram_valid_i(vga_sdram_valid_i),
+        .sdram_q_i   (sdram_q_i),
+        .vga_r       (vga_r),
+        .vga_g       (vga_g),
+        .vga_b       (vga_b),
+        .vga_hsync   (vga_hsync),
+        .vga_vsync   (vga_vsync)
+    );
+
+    // SDRAM bridge (returns raw 32-bit word, byte extraction below)
+    sdram_bridge u_sdram_bridge (
         .clk        (clk),
-        .rst        (reset),
-        .addr_i     (kbd_addr),
-        .ren_i      (kbd_ren),
-        .rdata_o    (kbd_rdata),
-        .ps2_clk_i  (ps2_clk_i),
-        .ps2_data_i (ps2_data_i)
+        .reset      (reset),
+        .access_i   (sdram_access),
+        .write_i    (dmem_raw_wen),
+        .addr_i     (dmem_addr[25:2]),
+        .wdata_i    (dmem_wdata),
+        .rdata_o    (sdram_word),
+        .stall_o    (sdram_stall),
+        .ctrl_addr  (sdram_addr_o),
+        .ctrl_data  (sdram_wdata_o),
+        .ctrl_we    (sdram_we_o),
+        .ctrl_req   (sdram_req_o),
+        .ctrl_ack   (sdram_ack_i),
+        .ctrl_valid (sdram_valid_i),
+        .ctrl_q     (sdram_q_i)
     );
 
-    // Pixel clock: divide system clock by 2 (50 MHz → 25 MHz)
-    logic clk_pixel;
-    always_ff @(posedge clk) begin
-        if (reset)
-            clk_pixel <= 1'b0;
-        else
-            clk_pixel <= ~clk_pixel;
+    // Byte extraction for SDRAM reads (same pattern as ROM)
+    logic [1:0]  sdram_byte_off;
+    logic [7:0]  sdram_bv;
+    logic [15:0] sdram_hv;
+    assign sdram_byte_off = dmem_addr[1:0];
+    assign sdram_bv = sdram_word[sdram_byte_off*8 +: 8];
+    assign sdram_hv = sdram_word[sdram_byte_off[1]*16 +: 16];
+
+    always_comb begin
+        case (dmem_funct3)
+            `F3_BYTE:  sdram_rdata = {{24{sdram_bv[7]}}, sdram_bv};
+            `F3_BYTEU: sdram_rdata = {24'b0, sdram_bv};
+            `F3_HALF:  sdram_rdata = {{16{sdram_hv[15]}}, sdram_hv};
+            `F3_HALFU: sdram_rdata = {16'b0, sdram_hv};
+            default:   sdram_rdata = sdram_word;
+        endcase
     end
-
-    // VGA text-mode controller
-    vga_text u_vga (
-        .clk       (clk),
-        .rst       (reset),
-        .addr_i    (vga_addr),
-        .wdata_i   (vga_wdata),
-        .wen_i     (vga_wen),
-        .rdata_o   (vga_rdata),
-        .clk_pixel (clk_pixel),
-        .vga_r     (vga_r),
-        .vga_g     (vga_g),
-        .vga_b     (vga_b),
-        .vga_hsync (vga_hsync),
-        .vga_vsync (vga_vsync)
-    );
 
 endmodule : top

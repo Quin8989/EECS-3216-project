@@ -14,6 +14,10 @@ module cpu #(
     output logic              dmem_wen_o,
     output logic              dmem_ren_o,
     output logic [2:0]        dmem_funct3_o,
+    output logic              dmem_raw_ren_o,
+    output logic              dmem_raw_wen_o,
+    // External memory stall (e.g. SDRAM bridge)
+    input  logic              mem_stall_i,
     // ROM data-bus read port (pass-through to fetch)
     input  logic [AWIDTH-1:0] rom_daddr_i,
     output logic [DWIDTH-1:0] rom_drdata_o,
@@ -46,6 +50,26 @@ module cpu #(
             load_wb <= load_stall;
     end
 
+    // --- Shift stall logic ---
+    // Two-cycle shifts: register the barrel-shifter result in cycle 1,
+    // write back in cycle 2.  Removes the barrel shifter from the
+    // single-cycle critical path (saves ~8-10 ns).
+    logic is_shift;
+    logic shift_stall, shift_wb;
+    logic [DWIDTH-1:0] shift_result_r;
+
+    // --- Multiply stall logic ---
+    // Minimal RV32M support: MUL only.
+    // Mirrors the existing 2-cycle shift/writeback pattern.
+    logic is_mul;
+    logic mul_stall, mul_wb;
+    logic [DWIDTH-1:0] mul_result_r;
+    logic [2*DWIDTH-1:0] mul_full_res;
+
+    // Unified stall visible to fetch and write-enable gating
+    logic any_stall;
+    assign any_stall = load_stall | shift_stall | mul_stall | mem_stall_i;
+
     fetch #(
         .DWIDTH(DWIDTH),
         .AWIDTH(AWIDTH)
@@ -54,7 +78,7 @@ module cpu #(
         .rst          (reset),
         .next_pc_i    (next_pc),
         .brtaken_i    (brtaken),
-        .stall_i      (load_stall),
+        .stall_i      (any_stall),
         .pc_o         (pc),
         .insn_o       (insn),
         .rom_daddr_i    (rom_daddr_i),
@@ -147,17 +171,24 @@ module cpu #(
             `OPC_RTYPE: begin
                 regwren = 1'b1;
                 wbsel   = `WB_ALU;
-                unique case (funct3)
-                    `F3_ADD_SUB: alusel = (funct7 == `FUNCT7_ALT) ? `ALU_SUB : `ALU_ADD;
-                    `F3_SLL:     alusel = `ALU_SLL;
-                    `F3_SLT:     alusel = `ALU_SLT;
-                    `F3_SLTU:    alusel = `ALU_SLTU;
-                    `F3_XOR:     alusel = `ALU_XOR;
-                    `F3_SRL_SRA: alusel = (funct7 == `FUNCT7_ALT) ? `ALU_SRA : `ALU_SRL;
-                    `F3_OR:      alusel = `ALU_OR;
-                    `F3_AND:     alusel = `ALU_AND;
-                    default:     alusel = 'x;
-                endcase
+                if (funct7 == `FUNCT7_M) begin
+                    unique case (funct3)
+                        `F3_ADD_SUB: alusel = `ALU_MUL;
+                        default:     alusel = 'x;
+                    endcase
+                end else begin
+                    unique case (funct3)
+                        `F3_ADD_SUB: alusel = (funct7 == `FUNCT7_ALT) ? `ALU_SUB : `ALU_ADD;
+                        `F3_SLL:     alusel = `ALU_SLL;
+                        `F3_SLT:     alusel = `ALU_SLT;
+                        `F3_SLTU:    alusel = `ALU_SLTU;
+                        `F3_XOR:     alusel = `ALU_XOR;
+                        `F3_SRL_SRA: alusel = (funct7 == `FUNCT7_ALT) ? `ALU_SRA : `ALU_SRL;
+                        `F3_OR:      alusel = `ALU_OR;
+                        `F3_AND:     alusel = `ALU_AND;
+                        default:     alusel = 'x;
+                    endcase
+                end
             end
             `OPC_ITYPE: begin
                 regwren = 1'b1;
@@ -235,9 +266,9 @@ module cpu #(
     assign rs1_data = registers[rs1];
     assign rs2_data = registers[rs2];
 
-    // Suppress register writes during the stall cycle; allow during writeback
+    // Suppress register writes during any stall cycle; allow during writeback
     logic actual_regwren;
-    assign actual_regwren = regwren & ~load_stall;
+    assign actual_regwren = regwren & ~any_stall;
 
     always_ff @(posedge clk) begin
         if (reset) begin
@@ -255,22 +286,64 @@ module cpu #(
     assign alu_op2 = rs2sel ? imm : rs2_data;
 
     // --- ALU (inlined from execute.sv) ---
+    logic [DWIDTH-1:0] alu_res_comb;
     always_comb begin
-        alu_res = '0;
+        alu_res_comb = '0;
+        mul_full_res = '0;
         unique case (alusel)
-            `ALU_ADD:  alu_res = alu_op1 + alu_op2;
-            `ALU_SUB:  alu_res = alu_op1 - alu_op2;
-            `ALU_AND:  alu_res = alu_op1 & alu_op2;
-            `ALU_OR:   alu_res = alu_op1 | alu_op2;
-            `ALU_XOR:  alu_res = alu_op1 ^ alu_op2;
-            `ALU_SLL:  alu_res = alu_op1 << alu_op2[4:0];
-            `ALU_SRL:  alu_res = alu_op1 >> alu_op2[4:0];
-            `ALU_SRA:  alu_res = $signed(alu_op1) >>> alu_op2[4:0];
-            `ALU_SLT:  alu_res = ($signed(alu_op1) < $signed(alu_op2)) ? 32'd1 : 32'd0;
-            `ALU_SLTU: alu_res = (alu_op1 < alu_op2) ? 32'd1 : 32'd0;
-            default:   alu_res = 'x;
+            `ALU_ADD:  alu_res_comb = alu_op1 + alu_op2;
+            `ALU_SUB:  alu_res_comb = alu_op1 - alu_op2;
+            `ALU_AND:  alu_res_comb = alu_op1 & alu_op2;
+            `ALU_OR:   alu_res_comb = alu_op1 | alu_op2;
+            `ALU_XOR:  alu_res_comb = alu_op1 ^ alu_op2;
+            `ALU_SLL:  alu_res_comb = alu_op1 << alu_op2[4:0];
+            `ALU_SRL:  alu_res_comb = alu_op1 >> alu_op2[4:0];
+            `ALU_SRA:  alu_res_comb = $signed(alu_op1) >>> alu_op2[4:0];
+            `ALU_SLT:  alu_res_comb = ($signed(alu_op1) < $signed(alu_op2)) ? 32'd1 : 32'd0;
+            `ALU_SLTU: alu_res_comb = (alu_op1 < alu_op2) ? 32'd1 : 32'd0;
+            `ALU_MUL: begin
+                mul_full_res = $signed(alu_op1) * $signed(alu_op2);
+                alu_res_comb = mul_full_res[DWIDTH-1:0];
+            end
+            default:   alu_res_comb = 'x;
         endcase
     end
+
+    // Shift detection and stall (forward-declared above; defined here
+    // after alusel is available)
+    assign is_shift = (alusel == `ALU_SLL) | (alusel == `ALU_SRL) | (alusel == `ALU_SRA);
+    assign shift_stall = is_shift & ~shift_wb;
+
+    always_ff @(posedge clk) begin
+        if (reset)
+            shift_wb <= 1'b0;
+        else
+            shift_wb <= shift_stall;
+    end
+
+    // Register the barrel-shifter result during the stall cycle
+    always_ff @(posedge clk) begin
+        if (shift_stall)
+            shift_result_r <= alu_res_comb;
+    end
+
+    assign is_mul = (alusel == `ALU_MUL);
+    assign mul_stall = is_mul & ~mul_wb;
+
+    always_ff @(posedge clk) begin
+        if (reset)
+            mul_wb <= 1'b0;
+        else
+            mul_wb <= mul_stall;
+    end
+
+    always_ff @(posedge clk) begin
+        if (mul_stall)
+            mul_result_r <= alu_res_comb;
+    end
+
+    // Final ALU output: use registered result on shift writeback cycle
+    assign alu_res = mul_wb ? mul_result_r : (shift_wb ? shift_result_r : alu_res_comb);
 
     // --- Branch control (inlined from branch_control.sv) ---
     logic breq, brlt, br_taken;
@@ -301,15 +374,30 @@ module cpu #(
 
     assign brtaken = br_taken | pcsel;
 
-    // load_stall: asserted during the first cycle of a load (before data is ready)
-    assign load_stall = memren & ~load_wb;
+    // load_stall: asserted during the first cycle of a load (before data is ready).
+    // Suppressed for SDRAM loads — the SDRAM bridge handles those via mem_stall_i.
+    assign load_stall = memren & ~load_wb & ~alu_res[31];
+
+    // Hold address and funct3 stable during load_wb (instruction has advanced,
+    // but RAM data is from the previous cycle's address)
+    logic [AWIDTH-1:0] dmem_addr_r;
+    logic [2:0]        dmem_funct3_r;
+
+    always_ff @(posedge clk) begin
+        if (load_stall) begin
+            dmem_addr_r   <= alu_res;
+            dmem_funct3_r <= funct3;
+        end
+    end
 
     // --- Data bus outputs ---
-    assign dmem_addr_o    = alu_res;
+    assign dmem_addr_o    = load_wb ? dmem_addr_r : alu_res;
     assign dmem_wdata_o   = rs2_data;
-    assign dmem_wen_o     = memwren & ~load_stall;
-    assign dmem_ren_o     = memren  & ~load_stall;   // suppress side-effect reads during stall
-    assign dmem_funct3_o  = funct3;
+    assign dmem_wen_o     = memwren & ~any_stall;
+    assign dmem_ren_o     = memren  & ~any_stall;   // suppress side-effect reads during stall
+    assign dmem_funct3_o  = load_wb ? dmem_funct3_r : funct3;
+    assign dmem_raw_ren_o = memren;
+    assign dmem_raw_wen_o = memwren;
 
     // --- Writeback (inlined) ---
     always_comb begin

@@ -19,8 +19,6 @@ else
   ROOT := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 endif
 
-FONT_PATH := $(ROOT)/data/font8x8.hex
-
 # Find test hex: check programs/ first, then programs/isa-tests/
 ifneq ($(wildcard $(ROOT)/programs/$(TEST).x),)
   MEM_PATH := $(ROOT)/programs/$(TEST).x
@@ -29,6 +27,7 @@ else
 endif
 
 SRC := $(addprefix $(ROOT)/rtl/, $(shell cat $(ROOT)/design.f)) \
+       $(ROOT)/tb/sdram_ctrl_stub.sv \
        $(ROOT)/tb/test_top.sv
 
 ISA_TESTS := $(basename $(notdir $(wildcard $(ROOT)/programs/isa-tests/*.x)))
@@ -39,8 +38,8 @@ INC_DIRS := $(ROOT)/rtl/soc $(ROOT)/rtl/cpu $(ROOT)/rtl/periph $(ROOT)/tb
 ifeq ($(SIM),iverilog)
 
 IVFLAGS := -g2012 $(addprefix -I ,$(INC_DIRS)) \
-           -DMEM_PATH=\"$(MEM_PATH)\" \
-           -DFONT_PATH=\"$(FONT_PATH)\"
+		   -DMEM_PATH=\"$(MEM_PATH)\" \
+		   -DFONT_PATH=\"$(ROOT)/data/font8x8.hex\"
 VVP     := $(ROOT)/work/sim.vvp
 
 compile:
@@ -61,7 +60,6 @@ compile:
 		-suppress 7061 -sv \
 		$(addprefix +incdir+,$(INC_DIRS)) \
 		"+define+MEM_PATH=\"$(MEM_PATH)\"" \
-		"+define+FONT_PATH=\"$(FONT_PATH)\"" \
 		$(SRC)
 
 run: compile

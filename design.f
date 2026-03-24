@@ -3,8 +3,7 @@ cpu/fetch.sv
 periph/ram.sv
 periph/uart.sv
 periph/timer.sv
-periph/vga_text.sv
-periph/keyboard.sv
+periph/vga_fb.sv
+periph/sdram_bridge.sv
 cpu/cpu.sv
 soc/top.sv
-soc/top_fpga.sv

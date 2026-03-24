@@ -2,10 +2,10 @@
 //
 // Register map:
 //   +0x0  TX_DATA  (write: send byte)
-//   +0x4  STATUS   (read: bit 0 = tx_ready, bit 1 = rx_valid)
-//   +0x8  RX_DATA  (read: received byte, clears rx_valid)
+//   +0x4  STATUS   (read: bit 0 = tx_ready)
+//   +0x8  RX_DATA  (read: always zero in this TX-only build)
 //
-// TX and RX shift registers inlined below (115200 8N1).
+// TX shift register only (115200 8N1).
 // In simulation, TX also prints via $write for convenience.
 
 module uart #(
@@ -20,7 +20,7 @@ module uart #(
     input  logic        ren_i,
     output logic [31:0] rdata_o,
     output logic        tx_o,       // serial TX line (idle high)
-    input  logic        rx_i        // serial RX line (idle high)
+    input  logic        rx_i        // unused in this build
 );
 
     localparam ADDR_TX_DATA = 4'h0;  // offset +0
@@ -108,112 +108,6 @@ module uart #(
         end
     end
 
-    // ── RX shift register ─────────────────────────────────
-    typedef enum logic [1:0] {
-        RX_IDLE  = 2'b00,
-        RX_START = 2'b01,
-        RX_DATA  = 2'b10,
-        RX_STOP  = 2'b11
-    } rx_state_t;
-
-    rx_state_t rx_state_q;
-
-    logic [8:0]  rx_baud_cnt;
-    logic [2:0]  rx_bit_idx;
-    logic [7:0]  rx_shift_q;
-
-    // Synchronise RX to system clock (2-FF)
-    logic [1:0] rx_sync;
-    logic       rx_s;
-
-    always_ff @(posedge clk) begin
-        if (rst)
-            rx_sync <= 2'b11;
-        else
-            rx_sync <= {rx_sync[0], rx_i};
-    end
-
-    assign rx_s = rx_sync[1];
-
-    logic [7:0] rx_byte;
-    logic       rx_pulse;
-
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            rx_state_q  <= RX_IDLE;
-            rx_baud_cnt <= '0;
-            rx_bit_idx  <= '0;
-            rx_shift_q  <= '0;
-            rx_pulse    <= 1'b0;
-            rx_byte     <= '0;
-        end else begin
-            rx_pulse <= 1'b0;
-
-            case (rx_state_q)
-                RX_IDLE: begin
-                    rx_baud_cnt <= '0;
-                    rx_bit_idx  <= '0;
-                    if (~rx_s)
-                        rx_state_q <= RX_START;
-                end
-                RX_START: begin
-                    if (rx_baud_cnt == 9'((CLKS_PER_BIT - 1) / 2)) begin
-                        rx_baud_cnt <= '0;
-                        if (~rx_s)
-                            rx_state_q <= RX_DATA;
-                        else
-                            rx_state_q <= RX_IDLE;
-                    end else begin
-                        rx_baud_cnt <= rx_baud_cnt + 9'd1;
-                    end
-                end
-                RX_DATA: begin
-                    if (rx_baud_cnt == 9'(CLKS_PER_BIT - 1)) begin
-                        rx_baud_cnt <= '0;
-                        rx_shift_q  <= {rx_s, rx_shift_q[7:1]};
-                        if (rx_bit_idx == 3'd7)
-                            rx_state_q <= RX_STOP;
-                        else
-                            rx_bit_idx <= rx_bit_idx + 3'd1;
-                    end else begin
-                        rx_baud_cnt <= rx_baud_cnt + 9'd1;
-                    end
-                end
-                RX_STOP: begin
-                    if (rx_baud_cnt == 9'(CLKS_PER_BIT - 1)) begin
-                        rx_baud_cnt <= '0;
-                        if (rx_s) begin
-                            rx_byte  <= rx_shift_q;
-                            rx_pulse <= 1'b1;
-                        end
-                        rx_state_q <= RX_IDLE;
-                    end else begin
-                        rx_baud_cnt <= rx_baud_cnt + 9'd1;
-                    end
-                end
-                default: rx_state_q <= RX_IDLE;
-            endcase
-        end
-    end
-
-    // ── RX data latch + valid flag ────────────────────────
-    logic [7:0] rx_data_reg;
-    logic       rx_valid;
-
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            rx_data_reg <= '0;
-            rx_valid    <= 1'b0;
-        end else begin
-            if (rx_pulse) begin
-                rx_data_reg <= rx_byte;
-                rx_valid    <= 1'b1;
-            end
-            if (ren_i && offset == ADDR_RX_DATA)
-                rx_valid <= 1'b0;
-        end
-    end
-
     // ── Sim: also print via $write ────────────────────────
     // synthesis translate_off
     always_ff @(posedge clk) begin
@@ -225,8 +119,8 @@ module uart #(
     // ── Read mux ──────────────────────────────────────────
     always_comb begin
         case (offset)
-            ADDR_STATUS:  rdata_o = {30'b0, rx_valid, tx_ready};
-            ADDR_RX_DATA: rdata_o = {24'b0, rx_data_reg};
+            ADDR_STATUS:  rdata_o = {31'b0, tx_ready};
+            ADDR_RX_DATA: rdata_o = 32'h0;
             default:      rdata_o = 32'h0;
         endcase
     end

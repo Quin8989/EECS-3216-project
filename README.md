@@ -1,432 +1,264 @@
-# EECS 3216 Project — RISC-V Processor Platform on DE10-Lite
+# EECS 3216 Project — RISC-V SoC on DE10-Lite
 
 **Team:** Ahmed Abdessamad Tatech (219965904), Quinlan Missikowski (217330119), Carlos Santiago Perez Sabugal (219965888)
 
----
+## Overview
 
-## 1. Overview
+This project is a small RISC-V SoC for the Intel DE10-Lite board.
 
-This project implements a single-cycle **RV32I RISC-V** processor with peripherals on the **Intel MAX 10 FPGA** (10M50DAF484C7G) found on the DE10-Lite development board. The design is written in SystemVerilog and includes:
+Current supported hardware path:
 
-- A full RV32I integer CPU (all 37 base integer instructions)
-- 4 KB instruction ROM + 8 KB data RAM (all in on-chip M9K block RAM)
-- VGA 640×480 @ 60 Hz text-mode display (80×30 characters)
-- UART transmitter/receiver (115 200 baud, 8N1)
-- 32-bit hardware timer with compare-match interrupt flag
-- PS/2 keyboard receiver with 16-entry FIFO
+- RV32I CPU with 2-cycle `MUL`
+- 4 KB instruction ROM
+- 8 KB on-chip RAM
+- 64 MB external SDRAM
+- JTAG-to-Avalon master for SDRAM load/read over USB
+- VGA output driven by a 320x240 8bpp framebuffer scaled to 640x480
+- UART TX for debug output
+- Timer peripheral
 
-The system passes all **38 official RISC-V ISA compliance tests** (`rv32ui-p-*.x`) in simulation.
+The current documented display path is the SDRAM framebuffer in `rtl/periph/vga_fb.sv`.
 
-### Resource Utilization (Quartus Prime Lite 25.1std)
+## Current Status
 
-| Resource | Used | Available | % |
-|---|---|---|---|
-| Logic elements | 4,309 | 49,760 | 8.7% |
-| Registers | 1,322 | — | — |
-| Memory bits (M9K) | 125,824 | 1,677,312 | 7.5% |
-| I/O pins | 30 | 360 | 8.3% |
+- ISA simulation passes all 38 `rv32ui-p-*` tests
+- Quartus build is closing timing with the current constraints
+- JTAG SDRAM load path is working at about 190 KB/s
+- The framebuffer test is expected to show:
+  - white border
+  - smooth gradient background
+  - centered orange/red rectangle
 
-Timing (worst-case slow 1200 mV, 85 °C model):
+## Setup
 
-| Clock | Constraint | Achieved Fmax | Setup Slack |
-|---|---|---|---|
-| `clk_50m` (system) | 37 MHz (27 ns) | 41.75 MHz | +1.9 ns |
-| `clk_pixel` (VGA) | 18.5 MHz (54 ns) | 52.27 MHz | +15.9 ns |
+### Required tools
 
-The SDC constrains the system clock to **37 MHz** rather than the board oscillator's native 50 MHz. The single-cycle CPU's critical path (register-file read → barrel-shift ALU → writeback) limits Fmax to ~42 MHz under worst-case conditions. With `derive_clock_uncertainty` adding ~3 ns of jitter/skew pessimism, a 27 ns period is needed to close timing cleanly. The board oscillator still runs at 50 MHz, and the logic is functionally correct at that frequency under typical operating conditions (room temperature, nominal voltage). Closing timing at a true 50 MHz constraint would require pipelining the CPU into at least two stages (IF → EX).
+- Quartus Prime Lite 25.1std with MAX 10 device support
+- `system-console` from Quartus
+- MSYS2 or another environment providing `bash`, `make`, and `python3`
+- `iverilog` for simulation
+- `riscv64-unknown-elf-gcc`, `riscv64-unknown-elf-objcopy`, and `riscv64-unknown-elf-objdump`
 
----
+### Windows PATH
 
-## 2. Architecture
+At minimum, these tools need to be on `PATH`:
 
-### Clock Domains
-
-- **50 MHz** system clock from the on-board oscillator (`MAX10_CLK1_50`)
-- **25 MHz** pixel clock derived by a flip-flop toggle divider in `top_fpga.sv`
-
-### Memory Map
-
-| Address | Peripheral | Size |
-|---|---|---|
-| `0x0100_0000` | Instruction ROM | 4 KB (1024 × 32-bit) |
-| `0x0200_0000` | Data RAM | 8 KB (2048 × 32-bit) |
-| `0x1000_0000` | UART (TX/RX/Status) | 3 registers |
-| `0x2000_0000` | Timer (COUNT/CMP/STATUS) | 3 registers |
-| `0x3000_0000` | VGA text buffer | 2400 bytes (80×30) |
-| `0x4000_0000` | Keyboard (data/status) | 2 registers |
-
-Address decoding uses bits `[31:24]` of the data memory address to select a peripheral.
-
-### CPU Microarchitecture
-
-The CPU is a **single-cycle** design with one important modification: a **1-cycle load stall**. Because all memories are synchronous (required for M9K block RAM inference), load instructions take two cycles — one to present the address and one to read back the data. During the stall cycle the PC and pipeline registers hold their values, and write-enables to memory are suppressed.
-
-Key submodules (all inlined into `cpu.sv`):
-- **Register file** — 32 × 32-bit registers, `x0` hardwired to zero
-- **Immediate generator** — Decodes I/S/B/U/J immediate formats
-- **ALU** — ADD, SUB, AND, OR, XOR, SLL, SRL, SRA, SLT, SLTU
-- **Branch comparator** — BEQ, BNE, BLT, BGE, BLTU, BGEU
-- **Control decoder** — Generates ALU select, writeback select, branch, memory, and register-write enables
-
----
-
-## 3. Project Structure
-
-```
-rtl/
-  cpu/
-    cpu.sv              CPU top-level (register file, ALU, decoder, branch,
-                        immediate gen all inlined; load-stall logic)
-    fetch.sv            Program counter + instruction ROM (4 byte-banks)
-  periph/
-    ram.sv              8 KB data RAM (4 byte-banks, synchronous read)
-    uart.sv             UART TX + RX shift registers (115200 8N1)
-    timer.sv            32-bit timer, compare-match flag
-    vga_text.sv         80×30 text-mode VGA + font ROM (altsyncram for synthesis)
-    keyboard.sv         PS/2 receiver + 16-entry FIFO
-  soc/
-    constants.svh       Opcode, funct3, ALU, and writeback defines
-    top.sv              SoC interconnect (address decode inlined)
-    top_fpga.sv         FPGA wrapper (pin mapping, reset synchronizer, heartbeat LED)
-
-tb/
-  test_top.sv           Testbench with clock generator, ECALL PASS/FAIL detection
-
-data/
-  font8x8.hex           8×8 bitmap font for simulation ($readmemh)
-  font8x8.mif           Same font in Altera MIF format for synthesis (altsyncram)
-  rom_bank[0-3].hex     Per-bank byte-lane hex files for ROM M9K init (synthesis)
-  rom_bank[0-3].mif     Per-bank MIF files (alternative format, not currently used)
-
-programs/
-  isa-tests/            38 RISC-V rv32ui compliance tests (.x hex files)
-  demo.x                Interactive demo program
-  test_uart.x           UART loopback test
-  test_timer.x          Timer test
-  test_vga.x            VGA text buffer test
-
-constraints/
-  de10_lite.qpf         Quartus project file
-  de10_lite.qsf         Pin assignments, device settings, synthesis macros
-  de10_lite.sdc         SDC timing constraints
-
-design.f                RTL file list (10 entries)
-Makefile                Build system (iverilog simulation + ISA test runner)
+```text
+C:\altera_lite\25.1std\quartus\bin64
+C:\altera_lite\25.1std\quartus\sopc_builder\bin
+C:\msys64\usr\bin
+C:\msys64\mingw64\bin
+C:\msys64\ucrt64\bin
 ```
 
----
+On this repo's current Windows flow, `bash` comes from `C:\msys64\usr\bin`, the RISC-V cross tools come from `C:\msys64\mingw64\bin`, and `python3` may come from `C:\msys64\ucrt64\bin`.
 
-## 4. Environment Setup
+If `./programs/src/build.sh <program>` fails on Windows with `riscv64-unknown-elf-gcc: command not found` or a Python `FileNotFoundError` during `.bin` to `.x` conversion, check those three MSYS2 paths first.
 
-### Required Tools
+For a prepared PowerShell session in this repo, dot-source:
 
-| Tool | Version | Purpose |
-|---|---|---|
-| **Quartus Prime Lite** | 25.1std | FPGA synthesis, place & route, programming |
-| **Icarus Verilog** | 12.0 | RTL simulation (SystemVerilog subset) |
-| **MSYS2** | Latest | Provides `make`, `cygpath`, and a Unix-like shell on Windows |
-
-### Installation (Windows)
-
-#### Quartus Prime Lite
-
-1. Download **Quartus Prime Lite 25.1std** from the Intel FPGA download center. During installation, include the **MAX 10 device support** package.
-2. Add the Quartus `bin64` directory to `PATH`:
-   ```
-   C:\altera_lite\25.1std\quartus\bin64
-   ```
-
-#### MSYS2 + Icarus Verilog
-
-1. Install [MSYS2](https://www.msys2.org/) to `C:\msys64`.
-2. Open an **MSYS2 MINGW64** shell and run:
-   ```bash
-   pacman -S mingw-w64-x86_64-iverilog make
-   ```
-3. Add these to your Windows `PATH`:
-   ```
-   C:\msys64\mingw64\bin
-   C:\msys64\usr\bin
-   ```
-   The first provides `iverilog` and `vvp`; the second provides `make` and `cygpath`.
-
-#### Why Not Questa/ModelSim?
-
-Quartus Prime Lite ships with a bundled Questa Starter edition, but we found that the license file it generates can contain an `error 300` entry instead of valid FEATURE grants, making it non-functional. Icarus Verilog 12.0 supports enough of the SystemVerilog-2012 subset (including `always_ff`, `always_comb`, `logic`, `typedef enum`, and parameterized modules) to simulate this design without issues.
-
-#### Windows Path Conversion
-
-When running under MSYS2, `make` resolves paths using Unix-style notation (e.g., `/c/VSProjects/...`). Quartus and Icarus both need native Windows paths. The Makefile handles this automatically with:
-```make
-ROOT := $(shell cygpath -m "$(realpath $(dir $(lastword $(MAKEFILE_LIST))))")
+```powershell
+. .\tools\setup_windows_env.ps1
 ```
-This converts paths to the `C:/VSProjects/...` form, which both tools accept.
 
----
+## Quick Start
 
-## 5. Simulation
+### 1. Run simulation
 
-### Running a Single Test
+From the repo root:
 
 ```bash
 make run TEST=test1
-```
-
-This compiles all RTL from `design.f` plus `tb/test_top.sv`, then runs the simulation. The testbench loads the hex file into instruction ROM via `$readmemh` and monitors register `x3` (gp). A RISC-V ISA test writes **1** to `x3` on pass and a non-1 value on fail, then executes `ECALL`. The testbench detects the `ECALL` and prints `PASS` or `FAIL`.
-
-### Running All 38 ISA Tests
-
-```bash
 make run-all
 ```
 
-This iterates over every `rv32ui-p-*.x` file in `programs/isa-tests/` and reports a pass/fail summary:
-
-```
-PASS  rv32ui-p-add
-PASS  rv32ui-p-addi
-...
-PASS  rv32ui-p-xori
-
-=== 38 passed, 0 failed ===
-```
-
-### Running Peripheral Tests
+Useful simulation targets:
 
 ```bash
 make run TEST=test_uart
 make run TEST=test_timer
-make run TEST=test_vga
-make run TEST=demo
 ```
 
----
+### 2. Build a program image
 
-## 6. FPGA Synthesis
+Programs are built from `programs/src` into `programs/<name>.elf`, `.bin`, `.objdmp`, and `.x`.
 
-### Running the Quartus Flow
-
-From a terminal with Quartus on `PATH`:
+Example:
 
 ```bash
+bash programs/src/build.sh test_framebuffer
+```
+
+On Windows after dot-sourcing the setup script, you can also run the same command through MSYS2 `bash` automatically via the smoke-test helper described below.
+
+### 3. Select the boot image used by synthesis
+
+Building a `.x` file is not enough. The FPGA boots whatever image is referenced by `MEM_PATH` in `constraints/de10_lite.qsf` and compiled into the ROM banks.
+
+Use the helper from the repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\select_boot_program.ps1 test_framebuffer
+```
+
+That script:
+
+- updates `MEM_PATH` in `constraints/de10_lite.qsf`
+- regenerates `data/rom_bank0.hex` through `data/rom_bank3.hex`
+
+### 4. Compile and program the FPGA
+
+From the repo root:
+
+```powershell
+$env:PATH = 'C:\altera_lite\25.1std\quartus\bin64;' + $env:PATH
 cd constraints
 quartus_sh --flow compile de10_lite
-```
-
-This runs the full Analysis & Synthesis → Fitter → Assembler → Timing Analyzer flow. The output `.sof` file is placed at `constraints/output_files/de10_lite.sof`.
-
-Alternatively, open `constraints/de10_lite.qpf` in the Quartus GUI and run **Processing → Start Compilation**.
-
-### Key QSF Settings
-
-The `.qsf` file contains several non-obvious settings that are critical for a successful build:
-
-```tcl
-# Device
-set_global_assignment -name FAMILY "MAX 10"
-set_global_assignment -name DEVICE 10M50DAF484C7G
-
-# Verilog macros passed to RTL
-set_global_assignment -name VERILOG_MACRO "SYNTHESIS=1"
-set_global_assignment -name VERILOG_MACRO "MEM_PATH=../programs/demo.x"
-set_global_assignment -name VERILOG_MACRO "FONT_PATH=../data/font8x8.hex"
-
-# Required for M9K memory initialization from MIF files on MAX 10
-set_global_assignment -name INTERNAL_FLASH_UPDATE_MODE "SINGLE COMP IMAGE WITH ERAM"
-```
-
-The `SYNTHESIS` macro gates `ifdef` blocks in the RTL that switch between behavioral `$readmemh` (simulation) and `altsyncram` instantiation (synthesis) for the font ROM.
-
-The `INTERNAL_FLASH_UPDATE_MODE` setting is **required** on MAX 10 devices for memories initialized from `.mif` files to retain their contents after programming. Without it, Quartus reports that "the current internal configuration mode does not support memory initialization."
-
-### SDC Timing Constraints
-
-```tcl
-create_clock -name clk_50m -period 27.000 [get_ports {MAX10_CLK1_50}]
-create_generated_clock -name clk_pixel -source [get_ports {MAX10_CLK1_50}] \
-    -divide_by 2 [get_registers {top_fpga:top_inst|clk_pixel}]
-derive_clock_uncertainty
-```
-
-The system clock is constrained to 37 MHz (27 ns) instead of the board's 50 MHz oscillator frequency. The single-cycle CPU's critical path (register read → ALU barrel shift → writeback) achieves ~42 MHz Fmax under worst-case conditions, and `derive_clock_uncertainty` adds ~3 ns of jitter/skew pessimism on top of that. The 27 ns period closes timing with ~1.9 ns of positive slack.
-
-I/O delays are set to relaxed values because the external interfaces (VGA DAC, buttons, PS/2) are slow relative to the clock.
-
-### Programming the Board
-
-With the DE10-Lite connected via USB-Blaster:
-
-```bash
 quartus_pgm -m jtag -o "p;de10_lite.sof"
 ```
 
-The `.sof` is in the `constraints/` directory (placed there by the Quartus project). This loads the bitstream into SRAM (volatile — lost on power-off). For non-volatile programming to internal flash, use the Quartus Programmer GUI and select `.pof` generation.
+### 5. Load extra data into SDRAM over JTAG
 
-### Changing the Program
+The JTAG master accesses SDRAM without rebuilding the FPGA image.
 
-If you replace `demo.x` with a different program or recompile one:
-1. Place the new 32-bit hex file at `programs/<name>.x`
-2. Update the `MEM_PATH` macro in the `.qsf` if the filename changed
-3. **Regenerate per-bank hex files** (required for ROM M9K initialization):
-   ```powershell
-   # PowerShell — run from project root
-   $lines = Get-Content "programs\demo.x" | Where-Object { $_ -match '^[0-9A-Fa-f]+$' }
-   $depth = 1024
-   foreach($b in 0..3) {
-       $offset = $b * 2
-       $content = ""
-       for($i=0; $i -lt $depth; $i++) {
-           if($i -lt $lines.Count) {
-               $w = $lines[$i].PadLeft(8,'0')
-               $byte = $w.Substring(6 - $offset, 2)
-               $content += "$byte`n"
-           } else { $content += "00`n" }
-       }
-       Set-Content -Path "data\rom_bank${b}.hex" -Value $content.TrimEnd() -NoNewline
-   }
-   ```
-4. Re-run `quartus_sh --flow compile de10_lite` and flash
-
----
-
-## 7. Challenges & Lessons Learned
-
-### 7.1 Block RAM (M9K) Inference
-
-This was the single most time-consuming issue in the project. The MAX 10 FPGA has 182 M9K blocks (1,677,312 memory bits total), and the design has ~126 Kbit of memory. In theory this fits easily. In practice, getting Quartus to actually *use* M9K blocks instead of fabric logic elements required multiple iterations.
-
-**Problem 1 — Asynchronous reads prevent M9K inference.**
-The initial RTL used standard combinational read patterns:
-```systemverilog
-assign rdata = mem[addr];  // combinational / async read
-```
-Quartus cannot map this to M9K because M9K blocks have **registered output ports only**. With every memory implemented in logic elements, the design needed over 127,000 flip-flops — far more than the 49,760 LEs available. The fitter stalled at ~86% routing utilization and could not complete.
-
-**Solution:** Every memory array in the design (instruction ROM, data RAM, VGA text buffer, font ROM) was rewritten to use synchronous reads:
-```systemverilog
-always_ff @(posedge clk)
-    rdata <= mem[addr];
-```
-This required adding a **1-cycle load stall** to the CPU, since the read data is now available one cycle after the address is presented. The stall logic holds the PC, suppresses register writes, and gates memory write-enables until the load completes.
-
-**Problem 2 — Byte-lane part-select writes prevent M9K inference.**
-The instruction ROM originally used a single 32-bit wide memory with byte-lane writes during initialization:
-```systemverilog
-mem[addr][7:0]   = data_byte;  // part-select write
-```
-Quartus does not support part-select writes to inferred M9K. The fix was to split every wide memory into **4 independent byte-bank arrays**, each 8 bits wide with its own write-enable.
-
-**Problem 3 — `initial` blocks prevent M9K inference for synthesis.**
-The VGA text buffer had an `initial` block to clear it to spaces. Quartus treated this as a ROM with initial contents and attempted to implement it in logic. Removing the `initial` block (and relying on a runtime clear routine or reset logic) allowed it to infer as a True Dual-Port M9K.
-
-**Problem 4 — Font ROM required explicit `altsyncram` instantiation.**
-Even after making the font ROM synchronous and removing `initial` blocks, Quartus still would not infer it as M9K from behavioral code with `$readmemh`. The `(* romstyle = "M9K" *)` synthesis attribute and `(* ram_init_file = "..." *)` were both ignored. The only reliable approach was to instantiate `altsyncram` explicitly under an `` `ifdef SYNTHESIS`` guard:
-```systemverilog
-`ifdef SYNTHESIS
-    altsyncram #(
-        .operation_mode("ROM"),
-        .width_a(8),
-        .widthad_a(10),
-        .init_file("../data/font8x8.mif"),
-        ...
-    ) font_altsyncram ( ... );
-`else
-    logic [7:0] font_mem [0:1023];
-    initial $readmemh(`FONT_PATH, font_mem);
-    always_ff @(posedge clk_i) font_data <= font_mem[font_addr];
-`endif
-```
-This also required converting the `.hex` font data to Altera `.mif` format.
-
-**Problem 5 — MAX 10 internal flash configuration mode.**
-After all the above, Quartus still reported that M9K memory initialization was unsupported. The fix was a single QSF assignment:
-```tcl
-set_global_assignment -name INTERNAL_FLASH_UPDATE_MODE "SINGLE COMP IMAGE WITH ERAM"
-```
-The default dual-image configuration mode on MAX 10 reserves M9K blocks for configuration and does not allow user memory initialization. Switching to single-image mode with ERAM enabled frees the M9K blocks for user logic with `.mif` initialization.
-
-### 7.2 Simulation Environment
-
-**Questa license issues.** The Questa Starter edition bundled with Quartus Prime Lite 25.1std generated a license file containing `error 300` entries instead of valid FEATURE grants. Multiple reinstallation attempts did not resolve it. We switched to Icarus Verilog, which is open-source and requires no license.
-
-**MSYS2 path handling.** On Windows, MSYS2's `make` resolves paths in Unix notation (`/c/Users/...`), but both Quartus and Icarus Verilog require Windows-style paths (`C:/Users/...`). This caused cryptic "file not found" errors during both simulation and synthesis. The fix was adding a `cygpath -m` call in the Makefile to normalize all paths.
-
-**Icarus Verilog SystemVerilog support.** Icarus Verilog 12.0 supports a useful subset of SystemVerilog-2012 when invoked with `-g2012`, including `always_ff`, `always_comb`, `logic`, `typedef enum`, parameterized modules, and `$readmemh`. However, it does **not** support `altsyncram` or other vendor primitives — hence the `` `ifdef SYNTHESIS`` guards around any Altera-specific code.
-
-### 7.3 File Organization
-
-The design was originally split into 21 RTL files (one per small submodule), plus a separate testbench clock generator. This was consolidated to **10 RTL files + 1 testbench** by inlining submodules that were only instantiated once:
-- 5 CPU submodules (register_file, execute, branch_control, igen, control) → inlined into `cpu.sv`
-- `uart_tx.sv` + `uart_rx.sv` → merged into `uart.sv`
-- `ps2_rx.sv` → inlined into `keyboard.sv`
-- `vga_timing.sv` → inlined into `vga_text.sv`
-- `mem_map.sv` → inlined into `top.sv`
-- `clockgen.sv` → inlined into `test_top.sv`
-
-This reduced cross-file dependencies and made synthesis debug easier, since each file is self-contained.
-
-### 7.4 ROM Bank Initialization
-
-**Problem:** The original instruction ROM used a `$readmemh` into a 32-bit array followed by a `for`-loop to split bytes into 4 banks. Quartus's synthesis engine **cannot evaluate this pattern** — the `initial` block is treated as non-constant, producing warning 10855: *"initial value for variable bank0 should be constant."* The M9K blocks power up with all zeros, so the CPU has no program.
-
-**Solution:** Under `` `ifdef SYNTHESIS``, each bank loads its own per-bank hex file directly:
-```systemverilog
-initial $readmemh("../data/rom_bank0.hex", bank0);
-initial $readmemh("../data/rom_bank1.hex", bank1);
-initial $readmemh("../data/rom_bank2.hex", bank2);
-initial $readmemh("../data/rom_bank3.hex", bank3);
-```
-The per-bank hex files are generated from the 32-bit program hex file (`demo.x`) by extracting byte lanes 0–3. A PowerShell script in the project root generates them. **If you change the program, you must regenerate the bank hex files before re-synthesizing.**
-
----
-
-## 8. Debug LEDs
-
-The FPGA wrapper (`top_fpga.sv`) maps the 10 red LEDs on the DE10-Lite as follows:
-
-| LED | Signal | Meaning |
-|---|---|---|
-| LEDR[0] | `hb_cnt[24]` | Heartbeat — blinks at ~1.5 Hz (~90 BPM) confirming the clock is running |
-| LEDR[1] | `reset` | Lit while KEY[0] is held (reset active) |
-| LEDR[2] | `dbg_vga_wr` | Latches ON after the first VGA text-buffer write — proves the CPU reached the `vga_puts` call |
-| LEDR[3] | `dbg_pc != 0x0100_0000` | Lit if the PC has moved from the reset vector — proves the CPU is executing |
-| LEDR[9:4] | `dbg_pc[7:2]` | Lower 6 bits of the instruction word-address — flicker rapidly while CPU runs, freeze if stuck |
-
-**Quick diagnostic checklist:**
-- **Only LEDR[0] blinks, LEDR[2–9] dark:** ROM is empty — regenerate per-bank hex files.
-- **LEDR[3] lit but LEDR[2] dark:** CPU runs but never writes to VGA — address decode or program bug.
-- **LEDR[2] lit, screen black:** Text buffer written but VGA pipeline issue — check `clk_pixel` or font ROM.
-- **All LEDR[9:4] frozen at one value:** CPU is stuck in a loop or has hit an illegal instruction.
-
----
-
-## 8. Building Programs
-
-Test programs are provided as pre-built `.x` hex files in `programs/`. The hex format is one 32-bit word per line in hexadecimal (e.g., `00000093`), loaded by `$readmemh` in simulation and by Quartus via the `MEM_PATH` macro.
-
-To change the program loaded during synthesis, edit the `MEM_PATH` macro in `de10_lite.qsf`:
-```tcl
-set_global_assignment -name VERILOG_MACRO "MEM_PATH=../programs/demo.x"
+```powershell
+& "C:\altera_lite\25.1std\quartus\sopc_builder\bin\system-console.exe" --script=tools/jtag_loader.tcl myfile.bin
 ```
 
-The `programs/src/` directory contains C source and a linker script for writing new programs. Building requires a RISC-V GCC cross-compiler (`riscv32-unknown-elf-gcc`). See `programs/src/build.sh` for the compilation and hex-generation flow.
+Default JTAG SDRAM base address is `0x04000000`.
 
----
+## Common Workflows
 
-## 9. Pin Assignments
+### Smoke test
 
-All pin assignments are in `constraints/de10_lite.qsf`. Key mappings:
+From the repo root in PowerShell:
 
-| Signal | FPGA Pin | Board Connection |
-|---|---|---|
-| `MAX10_CLK1_50` | PIN_P11 | 50 MHz oscillator |
-| `KEY[0]` (active-low reset) | PIN_B8 | Push button |
-| `GPIO[0]` (UART TX) | PIN_V10 | GPIO header |
-| `GPIO[1]` (UART RX) | PIN_W10 | GPIO header |
-| `GPIO[3]` (PS/2 clock) | PIN_W9 | GPIO header |
-| `GPIO[5]` (PS/2 data) | PIN_W5 | GPIO header |
-| `VGA_R[3:0]` | Various | VGA DAC red channel |
-| `VGA_G[3:0]` | Various | VGA DAC green channel |
-| `VGA_B[3:0]` | Various | VGA DAC blue channel |
-| `VGA_HS`, `VGA_VS` | PIN_N3, PIN_N1 | VGA sync |
-| `LEDR[9]` | PIN_B11 | Heartbeat LED (1 Hz blink) |
+```powershell
+. .\tools\setup_windows_env.ps1
+.\tools\smoke_test.ps1
+```
+
+That helper runs:
+
+- a software image build
+- a Quartus compile
+- the JTAG master smoke test
+
+Optional flags:
+
+```powershell
+.\tools\smoke_test.ps1 -Program test_mul
+.\tools\smoke_test.ps1 -SkipQuartus
+.\tools\smoke_test.ps1 -SkipJtag
+```
+
+### Framebuffer test
+
+This is the main video bring-up test.
+
+```powershell
+bash programs/src/build.sh test_framebuffer
+powershell -ExecutionPolicy Bypass -File .\tools\select_boot_program.ps1 test_framebuffer
+cd constraints
+quartus_sh --flow compile de10_lite
+quartus_pgm -m jtag -o "p;de10_lite.sof"
+```
+
+Expected monitor output:
+
+- white border
+- full-screen gradient
+- centered orange/red rectangle
+
+If the display looks wrong, sample framebuffer contents over JTAG:
+
+```powershell
+& "C:\altera_lite\25.1std\quartus\sopc_builder\bin\system-console.exe" --script=tools/dump_framebuffer_samples.tcl
+```
+
+### MUL self-test
+
+```powershell
+bash programs/src/build.sh test_mul
+powershell -ExecutionPolicy Bypass -File .\tools\select_boot_program.ps1 test_mul
+cd constraints
+quartus_sh --flow compile de10_lite
+quartus_pgm -m jtag -o "p;de10_lite.sof"
+```
+
+### JTAG master smoke/performance test
+
+```powershell
+& "C:\altera_lite\25.1std\quartus\sopc_builder\bin\system-console.exe" --script=tools/test_intel_master.tcl
+```
+
+## Memory Map
+
+### CPU-visible address map
+
+| Address | Peripheral |
+|---|---|
+| `0x0100_0000` | Instruction ROM |
+| `0x0200_0000` | On-chip data RAM |
+| `0x1000_0000` | UART |
+| `0x2000_0000` | Timer |
+| `0x8000_0000` | SDRAM |
+
+### SDRAM address windows
+
+The same SDRAM is exposed through two address views:
+
+- CPU software uses `0x8000_0000`
+- JTAG/System Console scripts use `0x0400_0000`
+
+## Important Notes
+
+### Boot image selection
+
+If the board still runs an old program after you built a new `.x`, one of these steps was missed:
+
+- `select_boot_program.ps1` was not run
+- Quartus was not recompiled
+- the newly built `.sof` was not programmed
+
+### SDRAM write limitation
+
+The current CPU-to-SDRAM path does not yet implement byte-enable writes.
+Software should use aligned 32-bit word stores for SDRAM writes.
+
+### Legacy modules
+
+The repository still contains older text-VGA and keyboard-related code and tests.
+Treat those as legacy unless you are explicitly reviving them.
+
+## Project Layout
+
+```text
+rtl/
+  cpu/       CPU and instruction fetch
+  periph/    RAM, UART, timer, framebuffer VGA, SDRAM bridge
+  soc/       Top-level integration and FPGA wrapper
+tb/          Simulation testbench
+programs/    Boot images, ISA tests, and source files
+tools/       JTAG loader, boot-image helper, SDRAM/framebuffer debug scripts
+constraints/ Quartus project and timing constraints
+data/        ROM initialization files
+```
+
+## Key Files
+
+- `programs/src/build.sh` builds C programs into `.x` boot images
+- `tools/select_boot_program.ps1` updates `MEM_PATH` and ROM bank hex files
+- `tools/jtag_loader.tcl` loads binary data into SDRAM over JTAG
+- `tools/test_intel_master.tcl` validates JTAG master access and speed
+- `tools/dump_framebuffer_samples.tcl` samples live framebuffer words from SDRAM
+- `rtl/periph/vga_fb.sv` implements the current VGA output path
+
+## Notes for Further Work
+
+The current platform is in a reasonable state for continued Doom-related bring-up, but the main missing pieces are still outside this README:
+
+- stronger software/runtime support
+- input path integration
+- SDRAM layout for framebuffer plus asset/data loading
+- any further CPU feature work beyond current RV32I + `MUL`

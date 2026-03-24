@@ -16,6 +16,7 @@
 
 // Funct7
 `define FUNCT7_ALT  7'h20
+`define FUNCT7_M    7'h01
 
 // Funct3 (R/I-type)
 `define F3_ADD_SUB  3'h0
@@ -53,6 +54,7 @@
 `define ALU_SRA     4'h7
 `define ALU_SLT     4'h8
 `define ALU_SLTU    4'h9
+`define ALU_MUL     4'hA
 
 // Writeback select
 `define WB_OFF      2'b00

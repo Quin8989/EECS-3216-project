@@ -39,3 +39,5 @@ _start:
 
     # ECALL — stops simulation
     ecall
+.Lhalt:
+    j .Lhalt
