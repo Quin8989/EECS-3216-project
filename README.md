@@ -16,6 +16,7 @@ Current supported hardware path:
 - VGA output driven by a 320x240 8bpp framebuffer scaled to 640x480
 - UART TX for debug output
 - Timer peripheral
+- PS/2 keyboard input at `0x4000_0000`
 
 The current documented display path is the SDRAM framebuffer in `rtl/periph/vga_fb.sv`.
 
@@ -77,6 +78,8 @@ Useful simulation targets:
 ```bash
 make run TEST=test_uart
 make run TEST=test_timer
+make run TEST=keyboard_paint TB=test_keyboard_demo
+make run TB=test_keyboard_unit
 ```
 
 ### 2. Build a program image
@@ -176,6 +179,63 @@ If the display looks wrong, sample framebuffer contents over JTAG:
 & "C:\altera_lite\25.1std\quartus\sopc_builder\bin\system-console.exe" --script=tools/dump_framebuffer_samples.tcl
 ```
 
+### Keyboard validation without hardware
+
+You can validate most of the keyboard path in simulation before plugging in a PS/2 keyboard:
+
+```bash
+make run TB=test_keyboard_unit
+make run TEST=keyboard_paint TB=test_keyboard_demo
+```
+
+What these cover:
+
+- `test_keyboard_unit` sends real PS/2 frames into `keyboard.sv` and checks receive and read-to-clear behavior.
+- `test_keyboard_demo` boots `keyboard_paint.x`, injects keyboard frames through the SoC, captures UART output, and checks framebuffer words that should change after movement and burst commands.
+
+### Keyboard level 1 demo
+
+The main keyboard-driven demo program is `keyboard_paint`.
+
+To build, select, compile, and program it onto the FPGA from the repo root:
+
+```powershell
+. .\tools\setup_windows_env.ps1
+bash programs/src/build.sh keyboard_paint
+powershell -ExecutionPolicy Bypass -File .\tools\select_boot_program.ps1 keyboard_paint
+cd constraints
+quartus_sh --flow compile de10_lite
+quartus_pgm -m jtag -o "p;de10_lite.sof"
+```
+
+What the demo should do when it boots:
+
+- clear the framebuffer to black
+- draw a highlighted cursor tile near the center of the screen
+- print `Keyboard!` and `WASD QE XC` on the UART debug output
+
+Controls:
+
+- `W`, `A`, `S`, `D`: move the cursor one tile and paint that tile with the active brush color
+- `Q`, `E`: cycle backward or forward through the brush palette
+- `C`: clear the full screen and keep the cursor at its current position
+- `X`: paint a burst pattern on the neighboring tiles around the cursor
+
+Visual behavior:
+
+- the screen is a 40x30 grid of 8x8 tiles backed by the SDRAM framebuffer
+- the current cursor tile is outlined brightly so it remains visible
+- moving leaves a painted trail behind the cursor
+- burst mode colors several neighboring tiles using the current brush and timer-derived variation
+
+If you only want to validate the full demo without hardware, run:
+
+```bash
+make run TEST=keyboard_paint TB=test_keyboard_demo
+```
+
+That bench verifies UART banner output, injected keyboard movement, and framebuffer updates.
+
 ### MUL self-test
 
 ```powershell
@@ -228,8 +288,7 @@ Software should use aligned 32-bit word stores for SDRAM writes.
 
 ### Legacy modules
 
-The repository still contains older text-VGA and keyboard-related code and tests.
-Treat those as legacy unless you are explicitly reviving them.
+Older text-VGA code still exists in the repository, but the active display path is the SDRAM framebuffer in `rtl/periph/vga_fb.sv`.
 
 ## Project Layout
 
@@ -253,6 +312,7 @@ data/        ROM initialization files
 - `tools/test_intel_master.tcl` validates JTAG master access and speed
 - `tools/dump_framebuffer_samples.tcl` samples live framebuffer words from SDRAM
 - `rtl/periph/vga_fb.sv` implements the current VGA output path
+- `programs/src/keyboard_paint.c` is the framebuffer-based keyboard demo program
 
 ## Notes for Further Work
 

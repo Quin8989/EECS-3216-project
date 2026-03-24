@@ -11,6 +11,7 @@
 
 TEST     ?= test1
 SIM      ?= iverilog
+TB       ?= test_top
 
 # Convert MSYS /c/… paths to C:/… so Questa/ModelSim can resolve them.
 ifeq ($(OS),Windows_NT)
@@ -27,8 +28,8 @@ else
 endif
 
 SRC := $(addprefix $(ROOT)/rtl/, $(shell cat $(ROOT)/design.f)) \
-       $(ROOT)/tb/sdram_ctrl_stub.sv \
-       $(ROOT)/tb/test_top.sv
+	$(ROOT)/tb/sdram_ctrl_stub.sv \
+	$(ROOT)/tb/$(TB).sv
 
 ISA_TESTS := $(basename $(notdir $(wildcard $(ROOT)/programs/isa-tests/*.x)))
 
@@ -40,7 +41,7 @@ ifeq ($(SIM),iverilog)
 IVFLAGS := -g2012 $(addprefix -I ,$(INC_DIRS)) \
 		   -DMEM_PATH=\"$(MEM_PATH)\" \
 		   -DFONT_PATH=\"$(ROOT)/data/font8x8.hex\"
-VVP     := $(ROOT)/work/sim.vvp
+VVP     := $(ROOT)/work/$(TB).vvp
 
 compile:
 	@echo "=== Compile (iverilog) ==="
@@ -67,7 +68,7 @@ run: compile
 	@echo "run -all" > $(ROOT)/run.macro
 	vsim -suppress 3839 -c \
 		-do $(ROOT)/run.macro \
-		$(ROOT)/work.test_top
+		$(ROOT)/work.$(TB)
 
 endif
 

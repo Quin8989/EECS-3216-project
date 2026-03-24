@@ -52,6 +52,9 @@ module top (
     logic [31:0] timer_addr, timer_wdata, timer_rdata;
     logic        timer_wen;
 
+    logic [31:0] kbd_addr,   kbd_wdata,   kbd_rdata;
+    logic        kbd_wen,    kbd_ren;
+
     // SDRAM bridge
     logic        sdram_stall, sdram_selected, sdram_access;
     logic [31:0] sdram_word, sdram_rdata;
@@ -120,18 +123,22 @@ module top (
     assign uart_wdata   = dmem_wdata;
     assign timer_addr   = dmem_addr;
     assign timer_wdata  = dmem_wdata;
+    assign kbd_addr     = dmem_addr;
+    assign kbd_wdata    = dmem_wdata;
     // Write enables: only the selected device gets the write
     always_comb begin
         rom_wen   = 1'b0;
         ram_wen   = 1'b0;
         uart_wen  = 1'b0;
         timer_wen = 1'b0;
+        kbd_wen   = 1'b0;
 
         case (sel)
             SEL_ROM:   rom_wen   = dmem_wen;
             SEL_RAM:   ram_wen   = dmem_wen;
             SEL_UART:  uart_wen  = dmem_wen;
             SEL_TIMER: timer_wen = dmem_wen;
+            SEL_KBD:   kbd_wen   = dmem_wen;
             default:   ;
         endcase
     end
@@ -139,9 +146,11 @@ module top (
     // Read enables
     always_comb begin
         uart_ren = 1'b0;
+        kbd_ren  = 1'b0;
 
         case (sel)
             SEL_UART: uart_ren = dmem_ren;
+            SEL_KBD:  kbd_ren  = dmem_ren;
             default:  ;
         endcase
     end
@@ -157,7 +166,7 @@ module top (
                 SEL_UART:  dmem_rdata = uart_rdata;
                 SEL_TIMER: dmem_rdata = timer_rdata;
                 SEL_VGA:   dmem_rdata = 32'h0;
-                SEL_KBD:   dmem_rdata = 32'h0;
+                SEL_KBD:   dmem_rdata = kbd_rdata;
                 default:   dmem_rdata = 32'hDEAD_BEEF;
             endcase
         end
@@ -213,6 +222,18 @@ module top (
         .wdata_i (timer_wdata),
         .wen_i   (timer_wen),
         .rdata_o (timer_rdata)
+    );
+
+    keyboard u_kbd (
+        .clk        (clk),
+        .rst        (reset),
+        .addr_i     (kbd_addr),
+        .wdata_i    (kbd_wdata),
+        .wen_i      (kbd_wen),
+        .ren_i      (kbd_ren),
+        .rdata_o    (kbd_rdata),
+        .ps2_clk_i  (ps2_clk_i),
+        .ps2_data_i (ps2_data_i)
     );
 
     vga_fb u_vga (

@@ -26,6 +26,10 @@ module top_fpga (
     // ── GPIO header ──────────────────────────────────
     output logic [0:0]  GPIO,  // GPIO[0] = UART TX
 
+    // ── PS/2 keyboard (wired to header pins) ─────────
+    input  logic        PS2_CLK,
+    input  logic        PS2_DAT,
+
     // ── SDRAM (directly to IS42S16320D on DE10-Lite) ──
     output logic [12:0] DRAM_ADDR,
     output logic [1:0]  DRAM_BA,
@@ -170,8 +174,8 @@ module top_fpga (
         .vga_vsync    (VGA_VS),
         .uart_tx_o    (uart_tx_w),
         .uart_rx_i    (1'b1),
-        .ps2_clk_i    (1'b1),
-        .ps2_data_i   (1'b1),
+        .ps2_clk_i    (PS2_CLK),
+        .ps2_data_i   (PS2_DAT),
         .sdram_addr_o (cpu_sdram_addr),
         .sdram_wdata_o(cpu_sdram_wdata),
         .sdram_we_o   (cpu_sdram_we),
@@ -212,30 +216,9 @@ module top_fpga (
     assign GPIO[0] = uart_tx_w;
 
     // ── SDRAM controller & clock ──────────────────
-    // Forward the SDRAM clock through a dedicated DDR output cell instead of
-    // a fabric inversion. This keeps the SDRAM clock edge relationship more
-    // stable at the pin and is a better match for the controller's
-    // expectation that DRAM rising edges occur on the FPGA clock's falling
-    // edge.
-    altddio_out u_dram_clk (
-        .outclock   (clk_25m),
-        .datain_h   (1'b0),
-        .datain_l   (1'b1),
-        .outclocken (1'b1),
-        .aclr       (1'b0),
-        .aset       (1'b0),
-        .sclr       (1'b0),
-        .sset       (1'b0),
-        .oe         (1'b1),
-        .dataout    (DRAM_CLK)
-    );
-
-    defparam u_dram_clk.width                  = 1;
-    defparam u_dram_clk.intended_device_family = "MAX 10";
-    defparam u_dram_clk.invert_output          = "OFF";
-    defparam u_dram_clk.oe_reg                 = "UNREGISTERED";
-    defparam u_dram_clk.power_up_high          = "OFF";
-    defparam u_dram_clk.extend_oe_disable      = "OFF";
+    // The SDRAM core expects the external DRAM clock to be the inverted phase
+    // of the internal 25 MHz controller clock.
+    assign DRAM_CLK = ~clk_25m;
 
     // DQ tristate handled explicitly at top level (not through hierarchy)
     logic [15:0] sdram_dq_o;

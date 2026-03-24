@@ -24,6 +24,8 @@ SECTIONS
     /* Read-only data also in ROM (constants, scancode table) */
     .rodata : {
         *(.rodata .rodata.*)
+        *(.srodata .srodata.*)
+        *(.sdata2 .sdata2.*)
     } > ROM
 
     /* Initialised data: loaded into ROM, copied to RAM at startup */
