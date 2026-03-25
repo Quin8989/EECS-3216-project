@@ -12,9 +12,6 @@ module top (
     // UART
     output logic       uart_tx_o,
     input  logic       uart_rx_i,
-    // PS/2 keyboard (unused in headless build)
-    input  logic       ps2_clk_i,
-    input  logic       ps2_data_i,
     // Desktop keyboard bridge over JTAG (scan-code injection)
     input  logic       jtag_kbd_valid_i,
     input  logic [7:0] jtag_kbd_code_i,
@@ -227,9 +224,7 @@ module top (
         .rdata_o (timer_rdata)
     );
 
-    keyboard #(
-        .AUTO_DEMO(1'b0)
-    ) u_kbd (
+    keyboard u_kbd (
         .clk                (clk),
         .rst                (reset),
         .addr_i             (kbd_addr),
@@ -237,8 +232,6 @@ module top (
         .wen_i              (kbd_wen),
         .ren_i              (kbd_ren),
         .rdata_o            (kbd_rdata),
-        .ps2_clk_i          (ps2_clk_i),
-        .ps2_data_i         (ps2_data_i),
         .jtag_inject_valid_i(jtag_kbd_valid_i),
         .jtag_inject_code_i (jtag_kbd_code_i)
     );

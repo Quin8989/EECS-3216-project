@@ -7,8 +7,6 @@ module test_top;
     logic       vga_hsync, vga_vsync;
     logic uart_tx;
     logic uart_rx;
-    logic ps2_clk, ps2_data;
-
     // SDRAM bus wires
     logic [23:0] sdram_addr;
     logic [31:0] sdram_wdata, sdram_q;
@@ -19,8 +17,8 @@ module test_top;
     logic        sdram_cke, sdram_cs_n, sdram_ras_n, sdram_cas_n, sdram_we_n;
     logic        sdram_dqml, sdram_dqmh;
 
-    // PS/2 and UART RX lines idle high
-    initial begin ps2_clk = 1'b1; ps2_data = 1'b1; uart_rx = 1'b1; end
+    // UART RX line idles high
+    initial begin uart_rx = 1'b1; end
 
     // Clock generator (inlined from clockgen.sv)
     initial clk = 0;
@@ -36,8 +34,6 @@ module test_top;
         .vga_vsync(vga_vsync),
         .uart_tx_o(uart_tx),
         .uart_rx_i(uart_rx),
-        .ps2_clk_i(ps2_clk),
-        .ps2_data_i(ps2_data),
         .jtag_kbd_valid_i(1'b0),
         .jtag_kbd_code_i (8'h00),
         .sdram_addr_o (sdram_addr),

@@ -26,10 +26,6 @@ module top_fpga (
     // ── GPIO header ──────────────────────────────────
     output logic [0:0]  GPIO,  // GPIO[0] = UART TX
 
-    // ── PS/2 keyboard (wired to header pins) ─────────
-    input  logic        PS2_CLK,
-    input  logic        PS2_DAT,
-
     // ── SDRAM (directly to IS42S16320D on DE10-Lite) ──
     output logic [12:0] DRAM_ADDR,
     output logic [1:0]  DRAM_BA,
@@ -200,8 +196,6 @@ module top_fpga (
         .vga_vsync    (VGA_VS),
         .uart_tx_o    (uart_tx_w),
         .uart_rx_i    (1'b1),
-        .ps2_clk_i    (PS2_CLK),
-        .ps2_data_i   (PS2_DAT),
         .jtag_kbd_valid_i(jtag_kbd_valid),
         .jtag_kbd_code_i (jtag_kbd_code),
         .sdram_addr_o (cpu_sdram_addr),

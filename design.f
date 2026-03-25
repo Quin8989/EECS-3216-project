@@ -1,7 +1,6 @@
 soc/constants.svh
 cpu/fetch.sv
 periph/ram.sv
-periph/ps2_rx.sv
 periph/keyboard.sv
 periph/uart.sv
 periph/timer.sv
