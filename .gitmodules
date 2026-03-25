@@ -1,0 +1,3 @@
+[submodule "rtl/vendor/sdram"]
+	path = rtl/vendor/sdram
+	url = https://github.com/nullobject/sdram-fpga.git

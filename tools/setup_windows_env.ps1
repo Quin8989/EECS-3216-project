@@ -40,10 +40,22 @@ foreach ($candidate in $quartusRoots) {
     }
 }
 
+# Locate MSYS2: honour $env:MSYS2_ROOT, then probe common install paths.
+$msys2Root = if ($env:MSYS2_ROOT -and (Test-Path $env:MSYS2_ROOT)) { $env:MSYS2_ROOT }
+             else {
+                 $candidates = @('C:\msys64','C:\msys2','C:\tools\msys64',
+                                 "$env:USERPROFILE\msys64","$env:USERPROFILE\scoop\apps\msys2\current")
+                 ($candidates | Where-Object { Test-Path $_ } | Select-Object -First 1)
+             }
+
+if (-not $msys2Root) {
+    Write-Warning 'MSYS2 not found. Set $env:MSYS2_ROOT or install to C:\msys64.'
+}
+
 $pathEntries = @(
-    'C:\msys64\usr\bin',
-    'C:\msys64\mingw64\bin',
-    'C:\msys64\ucrt64\bin'
+    "$msys2Root\usr\bin",
+    "$msys2Root\mingw64\bin",
+    "$msys2Root\ucrt64\bin"
 )
 
 if ($quartusRoot) {

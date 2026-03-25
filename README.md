@@ -1,3 +1,4 @@
+
 # EECS 3216 Project — RISC-V SoC on DE10-Lite
 
 **Team:** Ahmed Abdessamad Tatech (219965904), Quinlan Missikowski (217330119), Carlos Santiago Perez Sabugal (219965888)
@@ -182,25 +183,7 @@ Expected monitor output:
 - full-screen gradient
 - centered orange/red rectangle
 
-If the display looks wrong, sample framebuffer contents over JTAG:
-
-```powershell
-system-console --script=tools/dump_framebuffer_samples.tcl
-```
-
-### Keyboard validation without hardware
-
-You can validate most of the keyboard path in simulation before plugging in a PS/2 keyboard:
-
-```bash
-make run TB=test_keyboard_unit
-make run TEST=keyboard_paint TB=test_keyboard_demo
-```
-
-What these cover:
-
-- `test_keyboard_unit` sends real PS/2 frames into `keyboard.sv` and checks receive and read-to-clear behavior.
-- `test_keyboard_demo` boots `keyboard_paint.x`, injects keyboard frames through the SoC, captures UART output, and checks framebuffer words that should change after movement and burst commands.
+If the display looks wrong, you can inspect SDRAM contents using `tools/test_intel_master.tcl` over JTAG.
 
 ### Keyboard level 1 demo
 
@@ -245,28 +228,14 @@ make run TEST=keyboard_paint TB=test_keyboard_demo
 
 That bench verifies UART banner output, injected keyboard movement, and framebuffer updates.
 
-### Keyboard wiring isolation demo
+### Keyboard input via JTAG
 
-If you want to prove the FPGA video and SDRAM path without relying on external PS/2 wiring, use the auto-driven version of the demo:
+The keyboard peripheral accepts scan codes injected over JTAG (no PS/2 hardware needed).
+Use the desktop bridge script to type on your PC keyboard and relay to the FPGA:
 
 ```powershell
-bash programs/src/build.sh keyboard_paint_auto
-powershell -ExecutionPolicy Bypass -File .\tools\select_boot_program.ps1 keyboard_paint_auto
-cd constraints
-quartus_sh --flow compile de10_lite
-quartus_pgm -m jtag -o "p;de10_lite.sof"
+& tools\desktop_keyboard_to_jtag.ps1
 ```
-
-What it does:
-
-- boots into the same tile-paint framebuffer view as `keyboard_paint`
-- replays a fixed `WASD/QE/XC` sequence on a timer
-- paints, changes color, bursts, and clears without any keyboard attached
-
-Interpretation:
-
-- if `keyboard_paint_auto` animates correctly on VGA, the framebuffer, SDRAM, CPU, and demo software path are working, and the remaining fault is in the external PS/2 path or wiring
-- if `keyboard_paint_auto` does not animate, the problem is inside the FPGA image or board-level runtime path rather than the keyboard cable
 
 ### MUL self-test
 
@@ -321,23 +290,11 @@ quartus_sh --flow compile "c:\path\to\3216-project\constraints\de10_lite"
 
 Running `quartus_sh --flow compile de10_lite` from the repo root will fail with `Error (12007): Top-level design entity "de10_lite" is undefined`.
 
-### PS/2 keyboard vs JTAG keyboard injection
+### Keyboard input (JTAG injection)
 
-The SoC exposes a keyboard MMIO peripheral at `0x4000_0000`. There are two ways to drive it:
+The SoC exposes a keyboard MMIO peripheral at `0x4000_0000`, driven via JTAG injection — no external PS/2 hardware is needed.
 
-**Option A — physical PS/2 keyboard** (requires wiring to the DE10-Lite GPIO header):
-
-The board has no PS/2 connector; signals must be bridged from a PS/2 adapter through JP2 (`PS2_CLK` → W10, `PS2_DAT` → V9) with a 4.7 kΩ pull-up to VCC on each line.
-
-**Option B — desktop USB keyboard via JTAG injection** (no extra hardware needed):
-
-The FPGA image includes a reserved JTAG write address `0x4FFF_FF00`. Writing a PS/2 scan code to that address directly asserts `key_valid` in the keyboard peripheral, bypassing the PS/2 receiver entirely. The JTAG master is already wired in `rtl/soc/top_fpga.sv`.
-
-Single key injection:
-
-```powershell
-system-console --script=tools/inject_key_jtag.tcl 0x1D    # 0x1D = W
-```
+The FPGA image includes a reserved JTAG write address `0x4FFF_FF00`. Writing a PS/2 scan code to that address directly asserts `key_valid` in the keyboard peripheral. The JTAG master is wired in `rtl/soc/top_fpga.sv`.
 
 Interactive desktop bridge (press W/A/S/D/Q/E/C/X on your keyboard, Esc to quit):
 
@@ -345,7 +302,7 @@ Interactive desktop bridge (press W/A/S/D/Q/E/C/X on your keyboard, Esc to quit)
 & tools\desktop_keyboard_to_jtag.ps1
 ```
 
-That script maps each physical key to its PS/2 make-code and calls System Console once per keypress.
+That script maps each physical key to its PS/2 make-code and injects it via JTAG.
 
 **Scan codes used by `keyboard_paint`:**
 
@@ -397,7 +354,6 @@ data/        ROM initialization files
 - `tools/select_boot_program.ps1` updates `MEM_PATH` and ROM bank hex files
 - `tools/jtag_loader.tcl` loads binary data into SDRAM over JTAG
 - `tools/test_intel_master.tcl` validates JTAG master access and speed
-- `tools/dump_framebuffer_samples.tcl` samples live framebuffer words from SDRAM
 - `rtl/periph/vga_fb.sv` implements the current VGA output path
 - `programs/src/keyboard_paint.c` is the framebuffer-based keyboard demo program
 
