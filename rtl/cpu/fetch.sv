@@ -23,7 +23,7 @@ module fetch #(
 );
 
     // PC register
-    logic [AWIDTH-1:0] pc_q = BASE_ADDR;
+    logic [AWIDTH-1:0] pc_q;
     assign pc_o = pc_q;
 
     always_ff @(posedge clk) begin
@@ -88,28 +88,19 @@ module fetch #(
                    bank1[ifetch_addr], bank0[ifetch_addr]};
     end
 
-    // ── Data-bus read (port B) — synchronous ──
+    // ── Data-bus access (port B) — read/write, single address ──
     logic [ABITS-1:0] d_idx;
-    assign d_idx = ABITS'((rom_daddr_i - BASE_ADDR) >> 2);
-
-    always_ff @(posedge clk) begin
-        rom_drdata_o <= {bank3[d_idx], bank2[d_idx],
-                         bank1[d_idx], bank0[d_idx]};
-    end
-
-    // ── Data-bus write with byte-enables ──
-    logic [ABITS-1:0] wr_idx;
     logic [1:0]       wr_boff;
     logic [3:0]       be;
 
-    assign wr_idx  = ABITS'((rom_daddr_i - BASE_ADDR) >> 2);
+    assign d_idx   = ABITS'((rom_daddr_i - BASE_ADDR) >> 2);
     assign wr_boff = rom_daddr_i[1:0];
 
     always_comb begin
         be = 4'b0000;
         case (rom_dfunct3_i[1:0])
             2'b00:   be[wr_boff] = 1'b1;                                // SB
-            2'b01:   begin be[wr_boff] = 1'b1; be[wr_boff | 1] = 1'b1; end // SH
+            2'b01:   be = wr_boff[1] ? 4'b1100 : 4'b0011;              // SH
             default: be = 4'b1111;                                       // SW
         endcase
     end
@@ -131,11 +122,16 @@ module fetch #(
     end
 
     always_ff @(posedge clk) begin
+        rom_drdata_o <= {bank3[d_idx], bank2[d_idx],
+                         bank1[d_idx], bank0[d_idx]};
+    end
+
+    always_ff @(posedge clk) begin
         if (rom_dwen_i) begin
-            if (be[0]) bank0[wr_idx] <= wd0;
-            if (be[1]) bank1[wr_idx] <= wd1;
-            if (be[2]) bank2[wr_idx] <= wd2;
-            if (be[3]) bank3[wr_idx] <= wd3;
+            if (be[0]) bank0[d_idx] <= wd0;
+            if (be[1]) bank1[d_idx] <= wd1;
+            if (be[2]) bank2[d_idx] <= wd2;
+            if (be[3]) bank3[d_idx] <= wd3;
         end
     end
 

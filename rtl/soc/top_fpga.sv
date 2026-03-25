@@ -1,7 +1,7 @@
 // FPGA top-level wrapper for Intel DE10-Lite (10M50DAF484C7G)
 //
 // Maps DE10-Lite board pins to the headless SoC top module.
-//   - 50 MHz board clock → system clock
+//   - 50 MHz board oscillator → 25 MHz system clock (divide-by-2)
 //   - KEY[0] (active-low) → synchronised reset
 //   - LEDR[9:0] accent LEDs (active-high) for debug
 //   - GPIO[0] = UART TX
@@ -45,11 +45,11 @@ module top_fpga (
     assign rst_raw = ~KEY[0];           // KEY[0] pressed → reset
 
     // ── 25 MHz system clock (divide-by-2 from 50 MHz) ────
-    logic clk_25m;
-    always_ff @(posedge MAX10_CLK1_50) begin
-        if (rst_raw) clk_25m <= 1'b0;
-        else         clk_25m <= ~clk_25m;
-    end
+    // Free-running divider — no reset, avoids runt clock pulses.
+    // MAX 10 initialises registers to 0 after configuration.
+    logic clk_25m = 1'b0;
+    always_ff @(posedge MAX10_CLK1_50)
+        clk_25m <= ~clk_25m;
 
     // ── Reset synchroniser (2-FF on 25 MHz domain) ────
     logic [1:0] rst_sync;

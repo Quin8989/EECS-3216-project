@@ -27,10 +27,9 @@ module keyboard (
             if (jtag_inject_valid_i) begin
                 scan_reg  <= jtag_inject_code_i;
                 key_valid <= 1'b1;
-            end
-
-            if (ren_i && offset == ADDR_DATA)
+            end else if (ren_i && offset == ADDR_DATA) begin
                 key_valid <= 1'b0;
+            end
         end
     end
 

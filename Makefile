@@ -4,7 +4,9 @@
 #   make compile              Compile with iverilog (or SIM=questa for Questa)
 #   make run                  Compile + simulate
 #   make run TEST=test1       Simulate a specific program
-#   make run-all              Compile + run every ISA test
+#   make run-all              Compile + run every ISA + SoC test
+#   make run-ctests           Build + simulate all C test programs
+#   make build-tests          Build all C test programs to .x hex
 #   make clean                Remove build artifacts
 #
 # Simulator selection:  SIM=iverilog (default)  or  SIM=questa
@@ -20,18 +22,22 @@ else
   ROOT := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 endif
 
-# Find test hex: check programs/ first, then programs/isa-tests/
+# Find test hex: check programs/, then isa-tests/, then soc-tests/
 ifneq ($(wildcard $(ROOT)/programs/$(TEST).x),)
   MEM_PATH := $(ROOT)/programs/$(TEST).x
-else
+else ifneq ($(wildcard $(ROOT)/programs/isa-tests/$(TEST).x),)
   MEM_PATH := $(ROOT)/programs/isa-tests/$(TEST).x
+else
+  MEM_PATH := $(ROOT)/programs/soc-tests/$(TEST).x
 endif
 
 SRC := $(addprefix $(ROOT)/rtl/, $(shell cat $(ROOT)/design.f)) \
+	$(ROOT)/tb/vga_capture.sv \
 	$(ROOT)/tb/sdram_ctrl_stub.sv \
 	$(ROOT)/tb/$(TB).sv
 
 ISA_TESTS := $(basename $(notdir $(wildcard $(ROOT)/programs/isa-tests/*.x)))
+SOC_TESTS := $(basename $(notdir $(wildcard $(ROOT)/programs/soc-tests/*.x)))
 
 INC_DIRS := $(ROOT)/rtl/soc $(ROOT)/rtl/cpu $(ROOT)/rtl/periph $(ROOT)/tb
 
@@ -71,10 +77,10 @@ run: compile
 
 endif
 
-# ---------- Run all ISA tests ----------
+# ---------- Run all ISA + SoC tests ----------
 run-all:
 	@pass=0; fail=0; \
-	for t in $(ISA_TESTS); do \
+	for t in $(ISA_TESTS) $(SOC_TESTS); do \
 		result=$$($(MAKE) --no-print-directory run TEST=$$t 2>&1); \
 		if echo "$$result" | grep -q "PASS"; then \
 			echo "PASS  $$t"; pass=$$((pass+1)); \
@@ -87,4 +93,25 @@ run-all:
 clean:
 	rm -rf $(ROOT)/work $(ROOT)/run.macro
 
-.PHONY: compile run run-all clean
+# ---------- C test programs ----------
+C_TESTS := test_timer test_uart test_framebuffer
+
+build-tests:
+	@for t in $(C_TESTS); do \
+		echo "=== Build $$t ==="; \
+		$(ROOT)/programs/src/build.sh $$t || exit 1; \
+	done
+
+run-ctests: build-tests
+	@pass=0; fail=0; \
+	for t in $(C_TESTS); do \
+		result=$$($(MAKE) --no-print-directory run TEST=$$t 2>&1); \
+		if echo "$$result" | grep -q "RESULT: PASS"; then \
+			echo "PASS  $$t"; pass=$$((pass+1)); \
+		else \
+			echo "FAIL  $$t"; fail=$$((fail+1)); \
+		fi; \
+	done; \
+	echo ""; echo "=== C tests: $$pass passed, $$fail failed ==="
+
+.PHONY: compile run run-all run-ctests build-tests clean

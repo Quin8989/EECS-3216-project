@@ -7,9 +7,9 @@ module test_top;
     logic       vga_hsync, vga_vsync;
     logic uart_tx;
     logic uart_rx;
-    // SDRAM bus wires
+    // SDRAM bus wires (CPU)
     logic [23:0] sdram_addr;
-    logic [31:0] sdram_wdata, sdram_q;
+    logic [31:0] sdram_wdata;
     logic        sdram_we, sdram_req, sdram_ack, sdram_valid;
     wire  [15:0] sdram_dq;
     logic [12:0] sdram_a;
@@ -17,12 +17,22 @@ module test_top;
     logic        sdram_cke, sdram_cs_n, sdram_ras_n, sdram_cas_n, sdram_we_n;
     logic        sdram_dqml, sdram_dqmh;
 
+    // VGA SDRAM bus wires
+    logic [23:0] vga_sdram_addr;
+    logic        vga_sdram_req, vga_sdram_ack, vga_sdram_valid;
+
+    // Shared read-data bus (muxed between CPU stub and VGA responder)
+    logic [31:0] cpu_sdram_q;     // from SDRAM stub
+    logic [31:0] vga_sdram_q;     // from VGA responder
+    logic [31:0] sdram_q;         // muxed → dut.sdram_q_i
+    assign sdram_q = vga_sdram_valid ? vga_sdram_q : cpu_sdram_q;
+
     // UART RX line idles high
     initial begin uart_rx = 1'b1; end
 
-    // Clock generator (inlined from clockgen.sv)
+    // Clock generator — 25 MHz to match real FPGA (clk_25m)
     initial clk = 0;
-    always #5 clk = ~clk;
+    always #20 clk = ~clk;
 
     top dut (
         .clk(clk),
@@ -42,8 +52,28 @@ module test_top;
         .sdram_req_o  (sdram_req),
         .sdram_ack_i  (sdram_ack),
         .sdram_valid_i(sdram_valid),
+        .vga_sdram_addr_o (vga_sdram_addr),
+        .vga_sdram_req_o  (vga_sdram_req),
+        .vga_sdram_ack_i  (vga_sdram_ack),
+        .vga_sdram_valid_i(vga_sdram_valid),
         .sdram_q_i    (sdram_q)
     );
+
+    // ── VGA SDRAM: simple fast responder ──────────────
+    // Returns data from the same SDRAM stub memory so VGA sees CPU writes.
+    always_ff @(posedge clk) begin
+        if (reset) begin
+            vga_sdram_ack   <= 1'b0;
+            vga_sdram_valid <= 1'b0;
+        end else begin
+            vga_sdram_ack   <= vga_sdram_req & ~vga_sdram_ack;
+            vga_sdram_valid <= vga_sdram_ack;
+        end
+    end
+    always_ff @(posedge clk) begin
+        if (vga_sdram_ack)
+            vga_sdram_q <= u_sdram_stub.mem[vga_sdram_addr[17:0]];
+    end
 
     sdram_ctrl u_sdram_stub (
         .reset      (reset),
@@ -54,7 +84,7 @@ module test_top;
         .req        (sdram_req),
         .ack        (sdram_ack),
         .valid      (sdram_valid),
-        .q          (sdram_q),
+        .q          (cpu_sdram_q),
         .sdram_a    (sdram_a),
         .sdram_ba   (sdram_ba),
         .sdram_dq   (sdram_dq),
@@ -67,9 +97,24 @@ module test_top;
         .sdram_dqmh (sdram_dqmh)
     );
 
+    // ── VGA frame capture (simulation only) ────────────
+    // Use hierarchical references to the VGA module's internal counters
+    // for pixel-perfect alignment (compensates for registered outputs).
+    wire [9:0] vga_h_count = dut.u_vga.h_count;
+    wire [9:0] vga_v_count = dut.u_vga.v_count;
+
+    vga_capture #(.MAX_FRAMES(2)) u_vga_cap (
+        .clk       (clk),
+        .vga_r     (vga_r),
+        .vga_g     (vga_g),
+        .vga_b     (vga_b),
+        .h_count_i (vga_h_count),
+        .v_count_i (vga_v_count)
+    );
+
     initial begin
         reset = 1;
-        #20;
+        #200;  // hold reset for 5 clock cycles (200ns @ 25MHz)
         reset = 0;
     end
 
@@ -99,7 +144,8 @@ module test_top;
                 prev_pc <= dut.u_cpu.dbg_pc_o;
             end
 
-            if (same_pc_count == 1000) begin
+            if (same_pc_count == 500000) begin
+                // 500k cycles @ 25MHz = 20ms — enough for one VGA frame (16.8ms)
                 $display("=== CPU halted at PC=%08h (infinite loop) ===", prev_pc);
                 // Dump some SDRAM stub contents
                 $display("=== SDRAM[0..15] ===");
@@ -123,7 +169,7 @@ module test_top;
     end
 
     initial begin
-        #50000000;  // 50 ms
+        #200000000;  // 200 ms — enough for several VGA frames at 25 MHz
         $display("TIMEOUT");
         $finish;
     end

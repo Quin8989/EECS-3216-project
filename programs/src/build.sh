@@ -16,7 +16,7 @@ CC=riscv64-unknown-elf-gcc
 OBJCOPY=riscv64-unknown-elf-objcopy
 OBJDUMP=riscv64-unknown-elf-objdump
 
-CFLAGS="-march=rv32i -mabi=ilp32 -Os -Wall -ffreestanding -nostdlib -nostartfiles"
+CFLAGS="-march=rv32i_zmmul -mabi=ilp32 -Os -Wall -ffreestanding -nostdlib -nostartfiles"
 LDFLAGS="-T ${SRCDIR}/link.ld -Wl,--gc-sections"
 
 OUTDIR="${SRCDIR}/.."

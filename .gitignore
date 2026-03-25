@@ -5,6 +5,7 @@ run_debug.macro
 *.wlf
 transcript
 *.vcd
+vga_frame*.ppm
 
 # Build logs and temporary output
 *.log

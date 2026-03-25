@@ -9,7 +9,7 @@
 // In simulation, TX also prints via $write for convenience.
 
 module uart #(
-    parameter int CLK_FREQ = 50_000_000,
+    parameter int CLK_FREQ = 25_000_000,
     parameter int BAUD     = 115_200
 )(
     input  logic        clk,
@@ -26,7 +26,7 @@ module uart #(
     localparam ADDR_TX_DATA = 4'h0;  // offset +0
     localparam ADDR_STATUS  = 4'h4;  // offset +4
     localparam ADDR_RX_DATA = 4'h8;  // offset +8
-    localparam int CLKS_PER_BIT = CLK_FREQ / BAUD;  // 434 @ 50 MHz/115200
+    localparam int CLKS_PER_BIT = CLK_FREQ / BAUD;  // 217 @ 25 MHz/115200
 
     logic [3:0] offset;
     assign offset = addr_i[3:0];

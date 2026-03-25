@@ -148,7 +148,7 @@ module cpu #(
             `OPC_BRANCH: imm = imm_b_sext(insn);
             `OPC_JALR:   imm = imm_i_sext(insn);
             `OPC_LOAD:   imm = imm_i_sext(insn);
-            default:     imm = 'x;
+            default:     imm = '0;
         endcase
     end
 
@@ -167,17 +167,17 @@ module cpu #(
         wbsel   = `WB_OFF;
         alusel  = `ALU_ADD;
 
-        unique case (opcode)
+        case (opcode)
             `OPC_RTYPE: begin
                 regwren = 1'b1;
                 wbsel   = `WB_ALU;
                 if (funct7 == `FUNCT7_M) begin
-                    unique case (funct3)
+                    case (funct3)
                         `F3_ADD_SUB: alusel = `ALU_MUL;
-                        default:     alusel = 'x;
+                        default:     alusel = `ALU_ADD;
                     endcase
                 end else begin
-                    unique case (funct3)
+                    case (funct3)
                         `F3_ADD_SUB: alusel = (funct7 == `FUNCT7_ALT) ? `ALU_SUB : `ALU_ADD;
                         `F3_SLL:     alusel = `ALU_SLL;
                         `F3_SLT:     alusel = `ALU_SLT;
@@ -186,7 +186,6 @@ module cpu #(
                         `F3_SRL_SRA: alusel = (funct7 == `FUNCT7_ALT) ? `ALU_SRA : `ALU_SRL;
                         `F3_OR:      alusel = `ALU_OR;
                         `F3_AND:     alusel = `ALU_AND;
-                        default:     alusel = 'x;
                     endcase
                 end
             end
@@ -194,7 +193,7 @@ module cpu #(
                 regwren = 1'b1;
                 wbsel   = `WB_ALU;
                 rs2sel  = 1'b1;
-                unique case (funct3)
+                case (funct3)
                     `F3_ADD_SUB: alusel = `ALU_ADD;
                     `F3_SLT:     alusel = `ALU_SLT;
                     `F3_SLTU:    alusel = `ALU_SLTU;
@@ -203,7 +202,6 @@ module cpu #(
                     `F3_AND:     alusel = `ALU_AND;
                     `F3_SLL:     alusel = `ALU_SLL;
                     `F3_SRL_SRA: alusel = (funct7 == `FUNCT7_ALT) ? `ALU_SRA : `ALU_SRL;
-                    default:     alusel = 'x;
                 endcase
             end
             `OPC_LOAD: begin
@@ -246,16 +244,7 @@ module cpu #(
             end
             `OPC_FENCE:  begin /* NOP */ end
             `OPC_SYSTEM: begin /* NOP - ecall handled by testbench */ end
-            default: begin
-                pcsel   = 'x;
-                regwren = 'x;
-                rs1sel  = 'x;
-                rs2sel  = 'x;
-                memren  = 'x;
-                memwren = 'x;
-                wbsel   = 'x;
-                alusel  = 'x;
-            end
+            default: begin end  // NOP — safe defaults from block header
         endcase
     end
 
@@ -290,7 +279,7 @@ module cpu #(
     always_comb begin
         alu_res_comb = '0;
         mul_full_res = '0;
-        unique case (alusel)
+        case (alusel)
             `ALU_ADD:  alu_res_comb = alu_op1 + alu_op2;
             `ALU_SUB:  alu_res_comb = alu_op1 - alu_op2;
             `ALU_AND:  alu_res_comb = alu_op1 & alu_op2;
@@ -305,7 +294,7 @@ module cpu #(
                 mul_full_res = $signed(alu_op1) * $signed(alu_op2);
                 alu_res_comb = mul_full_res[DWIDTH-1:0];
             end
-            default:   alu_res_comb = 'x;
+            default:   alu_res_comb = '0;
         endcase
     end
 

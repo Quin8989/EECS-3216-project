@@ -1,5 +1,5 @@
 -- VHDL wrapper for nullobject/sdram-fpga controller.
--- Hardcodes generics for DE10-Lite IS42S16320D @ 50 MHz.
+-- Hardcodes generics for DE10-Lite IS42S16320D @ 25 MHz.
 -- 10-bit column addressing (full 64 MB).
 -- Converts unsigned ports to std_logic_vector for mixed-language use.
 --
@@ -38,9 +38,16 @@ end entity sdram_ctrl;
 architecture rtl of sdram_ctrl is
   signal sdram_a_u  : unsigned(12 downto 0);
   signal sdram_ba_u : unsigned(1 downto 0);
+  signal sdram_dq_i  : std_logic_vector(15 downto 0);
+  signal sdram_dq_o  : std_logic_vector(15 downto 0);
+  signal sdram_dq_oe : std_logic;
 begin
   sdram_a  <= std_logic_vector(sdram_a_u);
   sdram_ba <= std_logic_vector(sdram_ba_u);
+
+  -- Tristate handler for split-port upstream IP
+  sdram_dq   <= sdram_dq_o when sdram_dq_oe = '1' else (others => 'Z');
+  sdram_dq_i <= sdram_dq;
 
   u_sdram : entity work.sdram
     generic map (
@@ -67,7 +74,9 @@ begin
       q           => q,
       sdram_a     => sdram_a_u,
       sdram_ba    => sdram_ba_u,
-      sdram_dq    => sdram_dq,
+      sdram_dq_i  => sdram_dq_i,
+      sdram_dq_o  => sdram_dq_o,
+      sdram_dq_oe => sdram_dq_oe,
       sdram_cke   => sdram_cke,
       sdram_cs_n  => sdram_cs_n,
       sdram_ras_n => sdram_ras_n,
