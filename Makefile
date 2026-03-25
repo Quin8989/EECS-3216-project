@@ -39,8 +39,7 @@ INC_DIRS := $(ROOT)/rtl/soc $(ROOT)/rtl/cpu $(ROOT)/rtl/periph $(ROOT)/tb
 ifeq ($(SIM),iverilog)
 
 IVFLAGS := -g2012 $(addprefix -I ,$(INC_DIRS)) \
-		   -DMEM_PATH=\"$(MEM_PATH)\" \
-		   -DFONT_PATH=\"$(ROOT)/data/font8x8.hex\"
+		   -DMEM_PATH=\"$(MEM_PATH)\"
 VVP     := $(ROOT)/work/$(TB).vvp
 
 compile:

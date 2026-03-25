@@ -1,16 +1,16 @@
-// RAM byte/half/word access test
-// Reports results via VGA ONLY (no UART to avoid blocking)
+// RAM byte/half/word access test — reports results via UART
 
 #define RAM_BASE    ((volatile unsigned char *)0x02000100)
-#define VRAM        ((volatile unsigned int *)0x30000000)
+#define UART_TX     (*(volatile unsigned int *)0x10000000)
+#define UART_STATUS (*(volatile unsigned int *)0x10000004)
 
-static void vga_puts(int row, const char *s) {
-    volatile unsigned int *p = VRAM + row * 80;
-    while (*s) *p++ = *s++;
+static void uart_putc(char c) {
+    while (!(UART_STATUS & 1));
+    UART_TX = (unsigned int)c;
 }
 
-static void vga_putc(int row, int col, char c) {
-    VRAM[row * 80 + col] = c;
+static void uart_puts(const char *s) {
+    while (*s) uart_putc(*s++);
 }
 
 static int test_bytes(void) {
@@ -67,48 +67,29 @@ static int test_stack(void) {
 }
 
 int main(void) {
-    // Show banner immediately (test that we even reach main)
-    vga_putc(0, 0, 'R');
-    vga_putc(0, 1, 'A');
-    vga_putc(0, 2, 'M');
-    vga_putc(0, 3, ' ');
-    vga_putc(0, 4, 'T');
-    vga_putc(0, 5, 'E');
-    vga_putc(0, 6, 'S');
-    vga_putc(0, 7, 'T');
-    
+    uart_puts("RAM TEST\r\n");
     int total = 0;
-    
-    // Test bytes
-    if (test_bytes()) { vga_putc(2, 0, 'B'); vga_putc(2, 1, 'F'); total++; }
-    else { vga_putc(2, 0, 'B'); vga_putc(2, 1, 'P'); }
-    
-    // Test halfs
-    if (test_halfs()) { vga_putc(3, 0, 'H'); vga_putc(3, 1, 'F'); total++; }
-    else { vga_putc(3, 0, 'H'); vga_putc(3, 1, 'P'); }
-    
-    // Test words
-    if (test_words()) { vga_putc(4, 0, 'W'); vga_putc(4, 1, 'F'); total++; }
-    else { vga_putc(4, 0, 'W'); vga_putc(4, 1, 'P'); }
-    
-    // Test mixed
-    if (test_mixed()) { vga_putc(5, 0, 'M'); vga_putc(5, 1, 'F'); total++; }
-    else { vga_putc(5, 0, 'M'); vga_putc(5, 1, 'P'); }
-    
-    // Test stack
-    if (test_stack()) { vga_putc(6, 0, 'S'); vga_putc(6, 1, 'F'); total++; }
-    else { vga_putc(6, 0, 'S'); vga_putc(6, 1, 'P'); }
-    
-    // Summary
-    if (total == 0) {
-        vga_putc(8, 0, 'O');
-        vga_putc(8, 1, 'K');
-    } else {
-        vga_putc(8, 0, 'E');
-        vga_putc(8, 1, 'R');
-        vga_putc(8, 2, 'R');
-    }
-    
+
+    if (test_bytes()) { uart_puts("Bytes  FAIL\r\n"); total++; }
+    else              { uart_puts("Bytes  PASS\r\n"); }
+
+    if (test_halfs()) { uart_puts("Halfs  FAIL\r\n"); total++; }
+    else              { uart_puts("Halfs  PASS\r\n"); }
+
+    if (test_words()) { uart_puts("Words  FAIL\r\n"); total++; }
+    else              { uart_puts("Words  PASS\r\n"); }
+
+    if (test_mixed()) { uart_puts("Mixed  FAIL\r\n"); total++; }
+    else              { uart_puts("Mixed  PASS\r\n"); }
+
+    if (test_stack()) { uart_puts("Stack  FAIL\r\n"); total++; }
+    else              { uart_puts("Stack  PASS\r\n"); }
+
+    if (total == 0)
+        uart_puts("RESULT: PASS\r\n");
+    else
+        uart_puts("RESULT: FAIL\r\n");
+
     while(1);
     return 0;
 }

@@ -73,25 +73,6 @@ module test_top;
         reset = 0;
     end
 
-    task automatic dump_vga_rows;
-        integer row;
-        integer col;
-        reg [8*80-1:0] line;
-        begin
-            $display("=== VGA TEXT BUFFER (first 4 rows) ===");
-            for (row = 0; row < 4; row = row + 1) begin
-                for (col = 0; col < 80; col = col + 1) begin
-                    if (dut.u_vga.text_buf[row * 80 + col] == 8'h00)
-                        line[(79-col)*8 +: 8] = " ";
-                    else
-                        line[(79-col)*8 +: 8] = dut.u_vga.text_buf[row * 80 + col];
-                end
-                $display("%0s", line);
-            end
-            $display("=== END VGA TEXT BUFFER ===");
-        end
-    endtask
-
     // Stop on ECALL or timeout
     always @(posedge clk) begin
         if (!reset && dut.u_cpu.insn == 32'h00000073) begin
@@ -120,7 +101,6 @@ module test_top;
 
             if (same_pc_count == 1000) begin
                 $display("=== CPU halted at PC=%08h (infinite loop) ===", prev_pc);
-                dump_vga_rows();
                 // Dump some SDRAM stub contents
                 $display("=== SDRAM[0..15] ===");
                 begin : sdram_dump
@@ -144,7 +124,6 @@ module test_top;
 
     initial begin
         #50000000;  // 50 ms
-        dump_vga_rows();
         $display("TIMEOUT");
         $finish;
     end

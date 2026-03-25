@@ -1,82 +1,65 @@
-#define VRAM ((volatile unsigned int *)0x30000000)
+// RV32M MUL test — reports results via UART
 
-static void vga_putc(int row, int col, char c) {
-    VRAM[row * 80 + col] = (unsigned int)c;
+#define UART_TX     (*(volatile unsigned int *)0x10000000)
+#define UART_STATUS (*(volatile unsigned int *)0x10000004)
+
+static void uart_putc(char c) {
+    while (!(UART_STATUS & 1));
+    UART_TX = (unsigned int)c;
 }
 
-static void vga_puts(int row, const char *s) {
-    int col = 0;
-    while (*s) {
-        vga_putc(row, col++, *s++);
-    }
+static void uart_puts(const char *s) {
+    while (*s) uart_putc(*s++);
 }
 
-static void vga_puts_at(int row, int col, const char *s) {
-    while (*s) {
-        vga_putc(row, col++, *s++);
-    }
-}
-
-static void vga_put_hex32(int row, int col, unsigned int value) {
+static void uart_put_hex32(unsigned int value) {
     static const char hex[] = "0123456789ABCDEF";
-    int shift;
-
-    for (shift = 28; shift >= 0; shift -= 4) {
-        vga_putc(row, col++, hex[(value >> shift) & 0xF]);
-    }
+    for (int shift = 28; shift >= 0; shift -= 4)
+        uart_putc(hex[(value >> shift) & 0xF]);
 }
 
 static int run_mul(int a, int b) {
     int result;
-
     asm volatile(
         ".insn r 0x33, 0, 0x01, %0, %1, %2"
         : "=r"(result)
         : "r"(a), "r"(b));
-
     return result;
 }
 
-static int test_case(int row, const char *name, int a, int b, int expected) {
+static int test_case(const char *name, int a, int b, int expected) {
     int got = run_mul(a, b);
-
-    vga_puts(row, name);
-    vga_puts_at(row, 12, " got=");
-    vga_put_hex32(row, 17, (unsigned int)got);
-    vga_puts_at(row, 26, " exp=");
-    vga_put_hex32(row, 31, (unsigned int)expected);
-
+    uart_puts(name);
+    uart_puts(" got=");
+    uart_put_hex32((unsigned int)got);
+    uart_puts(" exp=");
+    uart_put_hex32((unsigned int)expected);
     if (got != expected) {
-        vga_puts_at(row, 41, " FAIL");
+        uart_puts(" FAIL\r\n");
         return 1;
     }
-
-    vga_puts_at(row, 41, " PASS");
+    uart_puts(" PASS\r\n");
     return 0;
 }
 
 int main(void) {
     int fails = 0;
 
-    vga_puts(0, "RV32M MUL TEST");
-    vga_puts(1, "Checks low 32-bit product only");
+    uart_puts("RV32M MUL TEST\r\n");
 
-    fails += test_case(3, "3 * 7", 3, 7, 21);
-    fails += test_case(4, "0 * X", 0, 0x13579BDF, 0);
-    fails += test_case(5, "-3 * 11", -3, 11, -33);
-    fails += test_case(6, "-9 * -9", -9, -9, 81);
-    fails += test_case(7, "0x12345678*16", 0x12345678, 16, 0x23456780);
-    fails += test_case(8, "0x7FFFFFFF*2", 0x7FFFFFFF, 2, -2);
+    fails += test_case("3 * 7       ", 3, 7, 21);
+    fails += test_case("0 * X       ", 0, 0x13579BDF, 0);
+    fails += test_case("-3 * 11     ", -3, 11, -33);
+    fails += test_case("-9 * -9     ", -9, -9, 81);
+    fails += test_case("12345678*16 ", 0x12345678, 16, 0x23456780);
+    fails += test_case("7FFFFFFF*2  ", 0x7FFFFFFF, 2, -2);
 
-    if (fails == 0) {
-        vga_puts(10, "RESULT: PASS");
-    } else {
-        vga_puts(10, "RESULT: FAIL count=");
-        vga_putc(10, 19, (char)('0' + fails));
+    if (fails == 0)
+        uart_puts("RESULT: PASS\r\n");
+    else {
+        uart_puts("RESULT: FAIL\r\n");
     }
 
-    while (1) {
-    }
-
+    while (1);
     return 0;
 }
