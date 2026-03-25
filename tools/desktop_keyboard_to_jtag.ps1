@@ -1,12 +1,23 @@
 param(
-    [string]$SystemConsole = "C:\intelFPGA_lite\20.1\quartus\sopc_builder\bin\system-console.exe"
+    [string]$SystemConsole
 )
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $tclScript = Join-Path $scriptDir "inject_key_jtag.tcl"
 
-if (-not (Test-Path $SystemConsole)) {
-    Write-Error "System Console not found: $SystemConsole"
+# Auto-discover System Console if not explicitly provided
+if (-not $SystemConsole) {
+    $cmd = Get-Command system-console -ErrorAction SilentlyContinue
+    if (-not $cmd) {
+        $cmd = Get-Command system-console.exe -ErrorAction SilentlyContinue
+    }
+    if ($cmd) {
+        $SystemConsole = $cmd.Source
+    }
+}
+
+if (-not $SystemConsole -or -not (Test-Path $SystemConsole)) {
+    Write-Error "System Console not found. Run '. .\tools\setup_windows_env.ps1' first, or pass -SystemConsole <path>."
     exit 1
 }
 

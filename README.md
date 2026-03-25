@@ -34,7 +34,7 @@ The current documented display path is the SDRAM framebuffer in `rtl/periph/vga_
 
 ### Required tools
 
-- Quartus Prime Lite 25.1std with MAX 10 device support
+- Quartus Prime Lite (tested with 20.1 and 25.1std) with MAX 10 device support
 - `system-console` from Quartus
 - MSYS2 or another environment providing `bash`, `make`, and `python3`
 - `iverilog` for simulation
@@ -42,17 +42,26 @@ The current documented display path is the SDRAM framebuffer in `rtl/periph/vga_
 
 ### Windows PATH
 
-At minimum, these tools need to be on `PATH`:
+At minimum, `quartus_sh`, `system-console`, `bash`, `make`, `python3`, and the RISC-V cross tools need to be on `PATH`. The exact Quartus install directory varies by machine:
+
+| Machine | Quartus root |
+|---------|--------------|
+| Home | `C:\altera_lite\25.1std\quartus` |
+| York lab | `C:\intelFPGA_lite\20.1\quartus` |
+
+The setup script auto-detects whichever is present:
+
+```powershell
+. .\tools\setup_windows_env.ps1
+```
+
+MSYS2 tools (`bash`, RISC-V cross tools, `python3`) are expected in:
 
 ```text
-C:\altera_lite\25.1std\quartus\bin64
-C:\altera_lite\25.1std\quartus\sopc_builder\bin
 C:\msys64\usr\bin
 C:\msys64\mingw64\bin
 C:\msys64\ucrt64\bin
 ```
-
-On this repo's current Windows flow, `bash` comes from `C:\msys64\usr\bin`, the RISC-V cross tools come from `C:\msys64\mingw64\bin`, and `python3` may come from `C:\msys64\ucrt64\bin`.
 
 If `./programs/src/build.sh <program>` fails on Windows with `riscv64-unknown-elf-gcc: command not found` or a Python `FileNotFoundError` during `.bin` to `.x` conversion, check those three MSYS2 paths first.
 
@@ -114,7 +123,7 @@ That script:
 From the repo root:
 
 ```powershell
-$env:PATH = 'C:\altera_lite\25.1std\quartus\bin64;' + $env:PATH
+. .\tools\setup_windows_env.ps1
 cd constraints
 quartus_sh --flow compile de10_lite
 quartus_pgm -m jtag -o "p;de10_lite.sof"
@@ -125,7 +134,7 @@ quartus_pgm -m jtag -o "p;de10_lite.sof"
 The JTAG master accesses SDRAM without rebuilding the FPGA image.
 
 ```powershell
-& "C:\altera_lite\25.1std\quartus\sopc_builder\bin\system-console.exe" --script=tools/jtag_loader.tcl myfile.bin
+system-console --script=tools/jtag_loader.tcl myfile.bin
 ```
 
 Default JTAG SDRAM base address is `0x04000000`.
@@ -176,7 +185,7 @@ Expected monitor output:
 If the display looks wrong, sample framebuffer contents over JTAG:
 
 ```powershell
-& "C:\altera_lite\25.1std\quartus\sopc_builder\bin\system-console.exe" --script=tools/dump_framebuffer_samples.tcl
+system-console --script=tools/dump_framebuffer_samples.tcl
 ```
 
 ### Keyboard validation without hardware
@@ -272,7 +281,7 @@ quartus_pgm -m jtag -o "p;de10_lite.sof"
 ### JTAG master smoke/performance test
 
 ```powershell
-& "C:\altera_lite\25.1std\quartus\sopc_builder\bin\system-console.exe" --script=tools/test_intel_master.tcl
+system-console --script=tools/test_intel_master.tcl
 ```
 
 ## Memory Map
@@ -327,8 +336,7 @@ The FPGA image includes a reserved JTAG write address `0x4FFF_FF00`. Writing a P
 Single key injection:
 
 ```powershell
-& 'C:\intelFPGA_lite\20.1\quartus\sopc_builder\bin\system-console.exe' `
-    --script=tools/inject_key_jtag.tcl 0x1D    # 0x1D = W
+system-console --script=tools/inject_key_jtag.tcl 0x1D    # 0x1D = W
 ```
 
 Interactive desktop bridge (press W/A/S/D/Q/E/C/X on your keyboard, Esc to quit):

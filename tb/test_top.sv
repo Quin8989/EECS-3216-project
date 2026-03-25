@@ -38,6 +38,8 @@ module test_top;
         .uart_rx_i(uart_rx),
         .ps2_clk_i(ps2_clk),
         .ps2_data_i(ps2_data),
+        .jtag_kbd_valid_i(1'b0),
+        .jtag_kbd_code_i (8'h00),
         .sdram_addr_o (sdram_addr),
         .sdram_wdata_o(sdram_wdata),
         .sdram_we_o   (sdram_we),

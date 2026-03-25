@@ -23,13 +23,40 @@ function Add-PathEntry {
     return $true
 }
 
+# Search well-known Quartus install locations (home machine + York lab).
+# The first directory that exists wins.
+$quartusRoots = @(
+    'C:\altera_lite\25.1std\quartus',
+    'C:\intelFPGA_lite\20.1\quartus',
+    'C:\intelFPGA_lite\25.1std\quartus',
+    'C:\altera_lite\20.1\quartus'
+)
+
+$quartusRoot = $null
+foreach ($candidate in $quartusRoots) {
+    if (Test-Path "$candidate\bin64\quartus_sh.exe") {
+        $quartusRoot = $candidate
+        break
+    }
+}
+
 $pathEntries = @(
-    'C:\altera_lite\25.1std\quartus\bin64',
-    'C:\altera_lite\25.1std\quartus\sopc_builder\bin',
     'C:\msys64\usr\bin',
     'C:\msys64\mingw64\bin',
     'C:\msys64\ucrt64\bin'
 )
+
+if ($quartusRoot) {
+    $pathEntries = @(
+        "$quartusRoot\bin64",
+        "$quartusRoot\sopc_builder\bin"
+    ) + $pathEntries
+} else {
+    Write-Warning 'No Quartus installation found. Searched:'
+    foreach ($candidate in $quartusRoots) {
+        Write-Warning "  $candidate"
+    }
+}
 
 $added = New-Object System.Collections.Generic.List[string]
 $missing = New-Object System.Collections.Generic.List[string]

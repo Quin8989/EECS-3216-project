@@ -20,7 +20,9 @@ module test_keyboard_unit;
         .ren_i      (ren_i),
         .rdata_o    (rdata_o),
         .ps2_clk_i  (ps2_clk),
-        .ps2_data_i (ps2_data)
+        .ps2_data_i (ps2_data),
+        .jtag_inject_valid_i(1'b0),
+        .jtag_inject_code_i (8'h00)
     );
 
     initial clk = 1'b0;
