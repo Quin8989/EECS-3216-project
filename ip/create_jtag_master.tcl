@@ -1,7 +1,17 @@
 # Create JTAG-to-Avalon Master system for DE10-Lite
-# Run with: qsys-script --script=create_jtag_master.tcl
+#
+# The committed ip/jtag_master/ tree was generated with Quartus 25.1.
+# Quartus cannot compile IP from a *newer* version, so if you are on
+# an older Quartus (e.g. 20.1 at York) you must regenerate:
+#
+#   cd <repo>/ip
+#   qsys-script --script=create_jtag_master.tcl
+#
+# This will recreate jtag_master.qsys and the synthesis/ output for
+# your local Quartus version.
 
-package require -exact qsys 20.1
+# Accept whichever Qsys package version the current Quartus provides.
+package require qsys
 
 # Create the system
 create_system jtag_master

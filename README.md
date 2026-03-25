@@ -37,6 +37,15 @@ The current documented display path is the SDRAM framebuffer in `rtl/periph/vga_
 
 - Quartus Prime Lite (tested with 20.1 and 25.1std) with MAX 10 device support
 - `system-console` from Quartus
+
+> **JTAG IP version note:** The committed `ip/jtag_master/` was generated
+> with Quartus 25.1. If you are on an older Quartus (e.g. 20.1 at York),
+> you must regenerate it before synthesis will succeed:
+>
+> ```powershell
+> cd ip
+> qsys-script --script=create_jtag_master.tcl
+> ```
 - MSYS2 or another environment providing `bash`, `make`, and `python3`
 - `iverilog` for simulation
 - `riscv64-unknown-elf-gcc`, `riscv64-unknown-elf-objcopy`, and `riscv64-unknown-elf-objdump`
