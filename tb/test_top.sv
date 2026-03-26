@@ -121,10 +121,10 @@ module test_top;
     // Stop on ECALL or timeout
     always @(posedge clk) begin
         if (!reset && dut.u_cpu.insn == 32'h00000073) begin
-            if (dut.u_cpu.registers[3] == 32'd1)
+            if (dut.u_cpu.u_rf.registers_o[3] == 32'd1)
                 $display("PASS");
             else
-                $display("FAIL (test %0d)", dut.u_cpu.registers[3] >> 1);
+                $display("FAIL (test %0d)", dut.u_cpu.u_rf.registers_o[3] >> 1);
             $finish;
         end
     end
@@ -160,8 +160,8 @@ module test_top;
                 begin : reg_dump
                     integer i;
                     for (i = 0; i < 32; i = i + 1)
-                        if (dut.u_cpu.registers[i] != 0)
-                            $display("  x%0d = %08h", i, dut.u_cpu.registers[i]);
+                        if (dut.u_cpu.u_rf.registers_o[i] != 0)
+                            $display("  x%0d = %08h", i, dut.u_cpu.u_rf.registers_o[i]);
                 end
                 $finish;
             end
