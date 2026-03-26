@@ -208,7 +208,8 @@ module top_fpga (
         .vga_sdram_req_o (vga_sdram_req),
         .vga_sdram_ack_i (vga_sdram_ack),
         .vga_sdram_valid_i(vga_sdram_valid),
-        .sdram_q_i    (sdram_q),
+        .sdram_q_i     (sdram_q),
+        .vga_sdram_q_i (sdram_q),
         .dbg_pc_o     (dbg_pc),
         .dbg_vga_wr_o (dbg_vga_wr)
     );

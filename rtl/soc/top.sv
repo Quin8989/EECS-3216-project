@@ -27,6 +27,7 @@ module top (
     input  logic        vga_sdram_ack_i,
     input  logic        vga_sdram_valid_i,
     input  logic [31:0] sdram_q_i,
+    input  logic [31:0] vga_sdram_q_i,
     // Debug
     output logic [31:0] dbg_pc_o,
     output logic        dbg_vga_wr_o
@@ -243,7 +244,7 @@ module top (
         .sdram_req_o (vga_sdram_req_o),
         .sdram_ack_i (vga_sdram_ack_i),
         .sdram_valid_i(vga_sdram_valid_i),
-        .sdram_q_i   (sdram_q_i),
+        .sdram_q_i   (vga_sdram_q_i),
         .vga_r       (vga_r),
         .vga_g       (vga_g),
         .vga_b       (vga_b),

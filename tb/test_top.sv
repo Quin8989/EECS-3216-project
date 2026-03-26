@@ -21,11 +21,9 @@ module test_top;
     logic [23:0] vga_sdram_addr;
     logic        vga_sdram_req, vga_sdram_ack, vga_sdram_valid;
 
-    // Shared read-data bus (muxed between CPU stub and VGA responder)
-    logic [31:0] cpu_sdram_q;     // from SDRAM stub
-    logic [31:0] vga_sdram_q;     // from VGA responder
-    logic [31:0] sdram_q;         // muxed → dut.sdram_q_i
-    assign sdram_q = vga_sdram_valid ? vga_sdram_q : cpu_sdram_q;
+    // Separate read-data buses for CPU and VGA
+    logic [31:0] cpu_sdram_q;     // from SDRAM stub → CPU bridge
+    logic [31:0] vga_sdram_q;     // from VGA responder → VGA framebuffer
 
     // UART RX line idles high
     initial begin uart_rx = 1'b1; end
@@ -56,7 +54,8 @@ module test_top;
         .vga_sdram_req_o  (vga_sdram_req),
         .vga_sdram_ack_i  (vga_sdram_ack),
         .vga_sdram_valid_i(vga_sdram_valid),
-        .sdram_q_i    (sdram_q)
+        .sdram_q_i     (cpu_sdram_q),
+        .vga_sdram_q_i (vga_sdram_q)
     );
 
     // ── VGA SDRAM: simple fast responder ──────────────
