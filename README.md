@@ -41,7 +41,7 @@ A small RISC-V SoC targeting the Intel DE10-Lite (MAX 10, 25 MHz).
 > ```
 - MSYS2 or another environment providing `bash`, `make`, and `python3`
 - `iverilog` for simulation
-- `riscv64-unknown-elf-gcc` **14.x or newer** — required for `-march=rv32i_zmmul` support (GCC 13 and earlier will reject this flag; change to `-march=rv32i` in `programs/src/build.sh` as a workaround, losing hardware MUL in C programs)
+- `riscv64-unknown-elf-gcc` **14.x or newer** — required for `-march=rv32i_zmmul` support (GCC 13 and earlier will reject this flag; change to `-march=rv32i` in `tools/build.sh` as a workaround, losing hardware MUL in C programs)
 
 ### Windows PATH
 
@@ -64,7 +64,7 @@ C:\msys64\ucrt64\bin
 The lab machines have Quartus, ModelSim, and the RISC-V toolchain pre-installed. Source the environment script:
 
 ```bash
-source env.sh
+source york_lab_env.sh
 ```
 
 The Makefile supports ModelSim/Questa via the `SIM` variable:
@@ -90,13 +90,13 @@ make run-ctests              # build + run C peripheral tests
 C programs are built from `programs/src/` into `programs/<name>.x`:
 
 ```bash
-bash programs/src/build.sh test_framebuffer
+bash tools/build.sh test_framebuffer
 ```
 
 Assembly tests are built into `programs/isa-tests/` or `programs/soc-tests/`:
 
 ```bash
-bash programs/src/build_asm.sh programs/src/rv32um-p-mul.S programs/isa-tests/rv32um-p-mul.x
+bash tools/build_asm.sh programs/src/rv32um-p-mul.S programs/isa-tests/rv32um-p-mul.x
 ```
 
 ### 3. Select the boot image for synthesis
@@ -144,7 +144,7 @@ system-console --script=tools/jtag_loader.tcl myfile.bin
 ### Framebuffer test on FPGA
 
 ```powershell
-bash programs/src/build.sh test_framebuffer
+bash tools/build.sh test_framebuffer
 .\tools\select_boot_program.ps1 test_framebuffer
 cd constraints
 quartus_sh --flow compile de10_lite
@@ -163,14 +163,14 @@ system-console --script=tools/test_intel_master.tcl
 
 ## Demo Programs
 
-### Plasma animation (`demo_uart_timer_vga`)
+### Plasma animation (`demo_plasma`)
 
 Renders an animated colour-plasma pattern on the 320×240 VGA framebuffer. Loops forever — no keyboard or serial terminal needed.
 
 **Windows:**
 ```powershell
 . .\tools\setup_windows_env.ps1
-.\tools\select_boot_program.ps1 demo_uart_timer_vga
+.\tools\select_boot_program.ps1 demo_plasma
 Push-Location .\constraints
 quartus_sh --flow compile de10_lite
 quartus_pgm -m jtag -o "p;de10_lite.sof"
@@ -179,8 +179,8 @@ Pop-Location
 
 **York lab (Linux):**
 ```bash
-source env.sh
-.\tools\select_boot_program.ps1 demo_uart_timer_vga   # or set MEM_PATH manually in QSF
+source york_lab_env.sh
+.\tools\select_boot_program.ps1 demo_plasma   # or set MEM_PATH manually in QSF
 cd constraints
 quartus_sh --flow compile de10_lite
 quartus_pgm -m jtag -o "p;de10_lite.sof"
@@ -201,7 +201,7 @@ Requires **three terminals** running simultaneously.
 **Windows:**
 ```powershell
 . .\tools\setup_windows_env.ps1
-bash programs/src/build.sh demo_keyboard_vga       # only needed if you changed the C source
+bash tools/build.sh demo_keyboard_vga       # only needed if you changed the C source
 .\tools\select_boot_program.ps1 demo_keyboard_vga
 Push-Location .\constraints
 quartus_sh --flow compile de10_lite
@@ -211,8 +211,8 @@ Pop-Location
 
 **York lab (Linux):**
 ```bash
-source env.sh
-bash programs/src/build.sh demo_keyboard_vga       # only if source changed
+source york_lab_env.sh
+bash tools/build.sh demo_keyboard_vga       # only if source changed
 # edit constraints/de10_lite.qsf: set MEM_PATH to "../programs/demo_keyboard_vga.x"
 # or use select_boot_program.ps1 under bash/pwsh
 cd constraints
@@ -234,7 +234,7 @@ system-console --no-gui --script=tools/keyboard_server.tcl
 
 **York lab (Linux):**
 ```bash
-source env.sh
+source york_lab_env.sh
 system-console --no-gui --script=tools/keyboard_server.tcl
 ```
 

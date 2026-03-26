@@ -33,7 +33,7 @@ set_global_assignment -name SEARCH_PATH ../rtl/cpu
 set_global_assignment -name SEARCH_PATH ../rtl/periph
 
 # Verilog macros for $readmemh paths (relative to constraints/ working dir)
-set_global_assignment -name VERILOG_MACRO "MEM_PATH=\"../programs/test_framebuffer.x\""
+set_global_assignment -name VERILOG_MACRO "MEM_PATH=\"../programs/demo_keyboard_vga.x\""
 set_global_assignment -name VERILOG_MACRO "SYNTHESIS=1"
 
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/soc/constants.svh

@@ -31,7 +31,7 @@ else
   MEM_PATH := $(ROOT)/programs/soc-tests/$(TEST).x
 endif
 
-SRC := $(addprefix $(ROOT)/rtl/, $(shell cat $(ROOT)/design.f)) \
+SRC := $(addprefix $(ROOT)/rtl/, $(shell cat $(ROOT)/rtl_sources.f)) \
 	$(ROOT)/tb/vga_capture.sv \
 	$(ROOT)/tb/sdram_ctrl_stub.sv \
 	$(ROOT)/tb/$(TB).sv
@@ -99,7 +99,7 @@ C_TESTS := test_timer test_uart test_framebuffer
 build-tests:
 	@for t in $(C_TESTS); do \
 		echo "=== Build $$t ==="; \
-		$(ROOT)/programs/src/build.sh $$t || exit 1; \
+		$(ROOT)/tools/build.sh $$t || exit 1; \
 	done
 
 run-ctests: build-tests

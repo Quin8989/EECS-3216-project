@@ -1,11 +1,14 @@
 #!/bin/bash
 # Build a C program from programs/src into programs/<name>.x.
-# Usage: ./build.sh test_framebuffer
-#        ./build.sh test_framebuffer -S
+# Usage: bash tools/build.sh test_framebuffer
+#        bash tools/build.sh test_framebuffer -S
 
 set -e
 
-SRCDIR="$(cd "$(dirname "$0")" && pwd)"
+TOOLDIR="$(cd "$(dirname "$0")" && pwd)"
+REPOROOT="$(cd "$TOOLDIR/.." && pwd)"
+SRCDIR="${REPOROOT}/programs/src"
+OUTDIR_BASE="${REPOROOT}/programs"
 PROG="${1:-demo}"
 KEEP_ASM=0
 
@@ -19,7 +22,7 @@ OBJDUMP=riscv64-unknown-elf-objdump
 CFLAGS="-march=rv32i_zmmul -mabi=ilp32 -Os -Wall -ffreestanding -nostdlib -nostartfiles"
 LDFLAGS="-T ${SRCDIR}/link.ld -Wl,--gc-sections"
 
-OUTDIR="${SRCDIR}/.."
+OUTDIR="${OUTDIR_BASE}"
 
 echo "=== Building ${PROG} ==="
 

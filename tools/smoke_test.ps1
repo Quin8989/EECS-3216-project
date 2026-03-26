@@ -46,7 +46,7 @@ function Invoke-Checked {
 $repoRootMsys = Convert-ToMsysPath -WindowsPath $repoRoot
 
 Invoke-Checked -Label "Build $Program" -Action {
-    & $bashCommand.Source -lc "export PATH=/mingw64/bin:/ucrt64/bin:/usr/bin:`$PATH; cd '$repoRootMsys'; ./programs/src/build.sh $Program"
+    & $bashCommand.Source -lc "export PATH=/mingw64/bin:/ucrt64/bin:/usr/bin:`$PATH; cd '$repoRootMsys'; ./tools/build.sh $Program"
 }
 
 if (-not $SkipQuartus) {
