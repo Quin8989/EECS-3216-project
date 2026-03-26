@@ -159,6 +159,136 @@ Expected output: white border, gradient background, centered red rectangle.
 system-console --script=tools/test_intel_master.tcl
 ```
 
+---
+
+## Demo Programs
+
+### Plasma animation (`demo_uart_timer_vga`)
+
+Renders an animated colour-plasma pattern on the 320×240 VGA framebuffer. Loops forever — no keyboard or serial terminal needed.
+
+**Windows:**
+```powershell
+. .\tools\setup_windows_env.ps1
+.\tools\select_boot_program.ps1 demo_uart_timer_vga
+Push-Location .\constraints
+quartus_sh --flow compile de10_lite
+quartus_pgm -m jtag -o "p;de10_lite.sof"
+Pop-Location
+```
+
+**York lab (Linux):**
+```bash
+source env.sh
+.\tools\select_boot_program.ps1 demo_uart_timer_vga   # or set MEM_PATH manually in QSF
+cd constraints
+quartus_sh --flow compile de10_lite
+quartus_pgm -m jtag -o "p;de10_lite.sof"
+```
+
+Expected output: animated plasma colours fill the screen continuously.
+
+---
+
+### Keyboard VGA terminal (`demo_keyboard_vga`)
+
+Renders a 40×30 text terminal on the VGA framebuffer. Characters are injected from your desktop keyboard over JTAG — no PS/2 hardware needed. Supports printable ASCII, Backspace, and Enter with scroll.
+
+Requires **three terminals** running simultaneously.
+
+#### Step 1 — Build, select, compile, and program the FPGA
+
+**Windows:**
+```powershell
+. .\tools\setup_windows_env.ps1
+bash programs/src/build.sh demo_keyboard_vga       # only needed if you changed the C source
+.\tools\select_boot_program.ps1 demo_keyboard_vga
+Push-Location .\constraints
+quartus_sh --flow compile de10_lite
+quartus_pgm -m jtag -o "p;de10_lite.sof"
+Pop-Location
+```
+
+**York lab (Linux):**
+```bash
+source env.sh
+bash programs/src/build.sh demo_keyboard_vga       # only if source changed
+# edit constraints/de10_lite.qsf: set MEM_PATH to "../programs/demo_keyboard_vga.x"
+# or use select_boot_program.ps1 under bash/pwsh
+cd constraints
+quartus_sh --flow compile de10_lite
+quartus_pgm -m jtag -o "p;de10_lite.sof"
+```
+
+The VGA output will show the title screen once the FPGA is programmed.
+
+#### Step 2 — Start the JTAG keyboard server (System Console)
+
+Open a **new terminal** and run:
+
+**Windows:**
+```powershell
+. .\tools\setup_windows_env.ps1
+system-console --no-gui --script=tools/keyboard_server.tcl
+```
+
+**York lab (Linux):**
+```bash
+source env.sh
+system-console --no-gui --script=tools/keyboard_server.tcl
+```
+
+Wait until you see:
+```
+Keyboard server listening on TCP port 2540.
+Run  python3 tools/keyboard_inject.py  to connect.
+```
+
+#### Step 3 — Connect the keyboard injector
+
+Open another **new terminal** and run:
+
+**Windows:**
+```powershell
+python tools\keyboard_inject.py
+```
+
+**York lab (Linux):**
+```bash
+python3 tools/keyboard_inject.py
+```
+
+You will see:
+```
+Connected.  Type on your keyboard — chars appear on the FPGA VGA output.
+```
+
+Now type — characters appear on the screen in real time. Press **Ctrl+C** in the Python terminal to quit.
+
+#### How it works
+
+```
+Your keyboard
+    │  (raw keystroke)
+    ▼
+keyboard_inject.py  ──TCP:2540──►  keyboard_server.tcl (System Console)
+                                            │  master_write_32 0x4FFFFF00
+                                            ▼
+                                    JTAG-to-Avalon master IP
+                                            │  Avalon bus write
+                                            ▼
+                                    top_fpga.sv (intercepts address)
+                                            │  jtag_kbd_valid + jtag_kbd_code
+                                            ▼
+                                    keyboard.sv peripheral @ 0x40000000
+                                            │  KBD_DATA / KBD_STATUS
+                                            ▼
+                                    demo_keyboard_vga.c (polls KBD_STATUS)
+                                            │  draws character on framebuffer
+                                            ▼
+                                    VGA output (320×240)
+```
+
 ## Memory Map
 
 | Address | Peripheral |
