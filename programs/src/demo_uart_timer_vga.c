@@ -74,39 +74,13 @@ static void render_frame(unsigned int t) {
     }
 }
 
-// ── Timer helpers ─────────────────────────────────────────────────────────────
-
-// Wait until the timer reaches `target` (handles 32-bit wraparound).
-static void timer_wait_until(unsigned int target) {
-    // Set the compare register so TIMER_STATUS fires when we arrive.
-    TIMER_CMP = target;
-    // Clear any stale match flag.
-    TIMER_STATUS = 1;
-    // Spin until the W1C flag sets.
-    while (!(TIMER_STATUS & 1))
-        ;
-    // Clear the flag.
-    TIMER_STATUS = 1;
-}
-
-// ── UART frame log ────────────────────────────────────────────────────────────
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-// Frame period: 25 MHz / 10 frames per second = 2,500,000 cycles.
-#define CYCLES_PER_FRAME 2500000u
-
 int main(void) {
-    unsigned int next_tick = TIMER_COUNT + CYCLES_PER_FRAME;
     unsigned int frame = 0;
 
     while (1) {
-        render_frame(frame);
-
-        // Wait for the next frame boundary so timing is locked to the timer.
-        timer_wait_until(next_tick);
-        next_tick += CYCLES_PER_FRAME;
-        frame++;
+        render_frame(frame++);
     }
 
     return 0;
