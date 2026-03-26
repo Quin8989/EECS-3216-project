@@ -1,18 +1,12 @@
 // demo_uart_timer_vga.c — EECS 3216 SoC feature demonstration
 //
-// Exercises all four available hardware features:
+// Exercises three hardware features:
 //
-//   VGA framebuffer  — renders an animated plasma pattern (320x240 RGB332)
-//   Timer            — drives the animation frame counter via compare-match
-//   UART             — prints frame count + timing info at each frame
+//   VGA framebuffer  — renders a continuously animated plasma pattern (320x240 RGB332)
+//   Timer            — locks each frame to a fixed 100 ms boundary via compare-match
 //   MUL instruction  — used in plasma colour calculations
 //
-// Each frame: fill the 320x240 framebuffer, wait for the timer to reach
-// the next 25 MHz tick target, then print a one-line status over UART.
-// Watch the VGA output for the animated pattern and the serial terminal
-// for the frame log.
-//
-// Baud: 115200 8N1.  Connect a terminal to the UART TX pin.
+// The animation loops forever. Watch the VGA output.
 
 #include "soc.h"
 
@@ -97,51 +91,23 @@ static void timer_wait_until(unsigned int target) {
 
 // ── UART frame log ────────────────────────────────────────────────────────────
 
-static void print_frame_info(unsigned int frame, unsigned int elapsed_cycles) {
-    uart_puts("Frame ");
-    uart_put_dec(frame);
-    uart_puts("  cycles=");
-    uart_put_dec(elapsed_cycles);
-    // Approximate ms: elapsed / 25000 ≈ elapsed >> 14 (close enough for display)
-    unsigned int ms = elapsed_cycles >> 14;
-    uart_puts("  (~");
-    uart_put_dec(ms);
-    uart_puts(" ms)\r\n");
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 // Frame period: 25 MHz / 10 frames per second = 2,500,000 cycles.
 #define CYCLES_PER_FRAME 2500000u
-#define NUM_FRAMES       100
 
 int main(void) {
-    uart_puts("\r\n=== EECS 3216 SoC Demo: UART + Timer + VGA + MUL ===\r\n");
-    uart_puts("Rendering ");
-    uart_put_dec(NUM_FRAMES);
-    uart_puts(" frames at 10 fps onto 320x240 VGA framebuffer.\r\n\r\n");
-
     unsigned int next_tick = TIMER_COUNT + CYCLES_PER_FRAME;
+    unsigned int frame = 0;
 
-    for (unsigned int frame = 0; frame < NUM_FRAMES; frame++) {
-        unsigned int t0 = TIMER_COUNT;
-
+    while (1) {
         render_frame(frame);
-
-        unsigned int t1 = TIMER_COUNT;
-        unsigned int render_cycles = t1 - t0;
-
-        print_frame_info(frame, render_cycles);
 
         // Wait for the next frame boundary so timing is locked to the timer.
         timer_wait_until(next_tick);
         next_tick += CYCLES_PER_FRAME;
+        frame++;
     }
 
-    uart_puts("\r\nDone. Framebuffer holds last frame — check VGA output.\r\n");
-
-    // Halt — spin forever.
-    while (1)
-        ;
     return 0;
 }
