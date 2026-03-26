@@ -8,3 +8,4 @@ export VSIM_VERSION=$(vsim -version 2>/dev/null | head -n 1)
 echo "VSIM version:  ${VSIM_VERSION}"
 export VERILATOR_VERSION=$(verilator --version 2>/dev/null | head -n 1)
 echo "Verilator version:  ${VERILATOR_VERSION}"
+echo "Verilator version:  ${VERILATOR_VERSION}"

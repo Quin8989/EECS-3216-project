@@ -1,7 +1,7 @@
 # EECS 3216 Project
 #
 # Usage:
-#   make compile              Compile with iverilog (or SIM=questa for Questa)
+#   make compile              Compile + build simulator binary
 #   make run                  Compile + simulate
 #   make run TEST=test1       Simulate a specific program
 #   make run-all              Compile + run every ISA + SoC test
@@ -9,10 +9,10 @@
 #   make build-tests          Build all C test programs to .x hex
 #   make clean                Remove build artifacts
 #
-# Simulator selection:  SIM=iverilog (default)  or  SIM=questa
+# Simulator selection:  SIM=verilator (default)  or  SIM=questa  or  SIM=iverilog
 
 TEST     ?= test1
-SIM      ?= iverilog
+SIM      ?= verilator
 TB       ?= test_top
 
 # Convert MSYS /c/… paths to C:/… so Questa/ModelSim can resolve them.
@@ -41,8 +41,34 @@ SOC_TESTS := $(basename $(notdir $(wildcard $(ROOT)/programs/soc-tests/*.x)))
 
 INC_DIRS := $(ROOT)/rtl/soc $(ROOT)/rtl/cpu $(ROOT)/rtl/periph $(ROOT)/tb
 
+# ---------- Verilator ----------
+ifeq ($(SIM),verilator)
+
+VDIR    := $(ROOT)/work/vl_$(TEST)
+VFLAGS  := --binary --timing --sv \
+           $(addprefix +incdir+,$(INC_DIRS)) \
+           -DMEM_PATH=\"$(MEM_PATH)\" \
+           --top-module $(TB) \
+           --public-flat-rw \
+           --x-assign 0 --x-initial 0 \
+           -Wno-TIMESCALEMOD \
+           -Wno-WIDTHEXPAND \
+           -Wno-WIDTHTRUNC \
+           -Wno-PINMISSING \
+           -Mdir $(VDIR) \
+           -j 0
+
+compile:
+	@echo "=== Compile (Verilator) ==="
+	@mkdir -p $(VDIR)
+	verilator $(VFLAGS) $(SRC)
+
+run: compile
+	@echo "=== Run (Verilator) ==="
+	$(VDIR)/V$(TB)
+
 # ---------- iverilog / vvp ----------
-ifeq ($(SIM),iverilog)
+else ifeq ($(SIM),iverilog)
 
 IVFLAGS := -g2012 $(addprefix -I ,$(INC_DIRS)) \
 		   -DMEM_PATH=\"$(MEM_PATH)\"

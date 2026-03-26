@@ -42,7 +42,7 @@ module sdram_ctrl (
     // Tie off unused SDRAM physical pins in simulation
     assign sdram_a     = '0;
     assign sdram_ba    = '0;
-    assign sdram_dq    = 16'bz;
+    assign sdram_dq    = '0;  // stub drives 0; real controller drives z (tristate)
     assign sdram_cke   = 1'b1;
     assign sdram_cs_n  = 1'b1;
     assign sdram_ras_n = 1'b1;
