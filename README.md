@@ -353,7 +353,174 @@ keyboard_inject.py  ──TCP:2540──►  keyboard_server.tcl (System Console
                                     VGA output (320×240)
 ```
 
+---
+
+## Writing and Testing a New C Program
+
+This section walks through the full lifecycle of a C program on this SoC — from source file to simulation to running on real hardware.
+
+### Key concepts
+
+**MMIO (Memory-Mapped I/O)**
+Peripherals (UART, timer, keyboard, VGA) are controlled by reading and writing specific memory addresses rather than using special CPU instructions. For example, writing a byte to address `0x1000_0000` queues it for UART transmission. The file `programs/src/soc.h` defines C macros for all of these addresses so you don't have to remember the raw numbers.
+
+**The `.x` hex image**
+After compiling, the program is stripped down to just the bytes that go into ROM (`.text` + `.rodata` — the machine code and read-only constants). These bytes are then written out as a plain text file where each line is one 32-bit word in hex, e.g. `00500113`. This is what `$readmemh` in SystemVerilog understands — it reads this file line by line at simulation startup and fills the ROM array with those values, so the CPU sees your program when it fetches from address `0x0100_0000`.
+
+**The testbench (`tb/test_top.sv`)**
+A testbench is a simulation wrapper that drives a hardware design and checks its outputs. `test_top.sv` instantiates the entire SoC (CPU, RAM, peripherals, SDRAM stub), generates a 25 MHz clock, holds reset for a few cycles, then lets the CPU run. It watches every instruction and when it sees `ecall` (an environment call — used here as a "halt" signal), it reads register `x3` to determine pass or fail. Register `x3` is set by `crt0.s` to the return value of `main()`.
+
+**`crt0.s` — the C runtime**
+When the CPU boots, the first instruction it runs is not `main()` — it is the startup code in `crt0.s`. This sets up the stack pointer, copies any initialised global variables from ROM into RAM (they are stored in ROM because RAM loses its contents at reset), zeroes the BSS section (uninitialised globals), and then calls `main()`. When `main()` returns, `crt0.s` captures the return value into `x3` and executes `ecall` to halt the simulation.
+
+**The test framework (`soc.h`)**
+`test_begin()`, `test_run()`, and `test_end()` are thin macros/functions that print results over UART and track pass/fail counts. `test_end()` returns `1` if all tests passed (which `crt0.s` puts into `x3`, causing the testbench to print `PASS`) or `0` if any failed. `test_assert(cond, msg)` is like an assertion — if the condition is false it immediately returns an error code from the enclosing test function.
+
+---
+
+### Step 1 — Write the source file
+
+Create `programs/src/my_test.c`. Include `soc.h` and use the test framework:
+
+```c
+#include "soc.h"
+
+// Each test function returns 0 on success, non-zero on failure.
+static int test_timer_runs(void) {
+    unsigned int t0 = TIMER_COUNT;
+    // Spin for a bit (the timer increments every clock cycle at 25 MHz)
+    for (volatile int i = 0; i < 1000; i++);
+    unsigned int t1 = TIMER_COUNT;
+    test_assert(t1 > t0, "timer did not advance");
+    return 0;
+}
+
+int main(void) {
+    test_begin("My Timer Test");   // prints heading over UART
+    test_run(test_timer_runs);     // runs the function, prints PASS/FAIL
+    return test_end();             // prints summary; returns 1=PASS or 0=FAIL
+}
+// main's return value → crt0.s → x3 register → testbench checks → prints PASS/FAIL
+```
+
+**`TIMER_COUNT`** is simply `*(volatile unsigned int *)0x20000000` — a C pointer cast to the timer's MMIO address. The `volatile` keyword tells the compiler not to optimise away repeated reads (since the hardware changes the value independently of the CPU).
+
+---
+
+### Step 2 — Compile to a `.x` image
+
+```bash
+bash tools/build.sh my_test
+# reads:  programs/src/my_test.c  +  programs/src/crt0.s  +  programs/src/link.ld
+# writes: programs/my_test.x   (hex image)
+#         programs/my_test.objdmp  (disassembly, for debugging)
+```
+
+Internally `build.sh` calls:
+1. `riscv64-unknown-elf-gcc` — cross-compiles for RV32I+Zmmul (produces a RISC-V ELF binary on your x86 PC)
+2. `objcopy` — strips the ELF down to just the raw `.text` + `.rodata` bytes
+3. A small Python script — converts the raw binary into one hex word per line → `my_test.x`
+
+---
+
+### Step 3 — Simulate
+
+```bash
+make run TEST=my_test
+```
+
+What the Makefile does:
+1. Passes `-DMEM_PATH="programs/my_test.x"` to `iverilog` as a compile-time define
+2. Compiles every RTL file listed in `rtl_sources.f` plus the testbench files in `tb/` into a single simulation executable (`work/test_top.vvp`)
+3. Runs `vvp work/test_top.vvp` — this executes the simulation. The testbench's `$readmemh(MEM_PATH, ...)` call fills the ROM with your program's hex words, the clock starts, and the CPU runs your code
+4. When `ecall` is executed, the testbench checks `x3` and prints `PASS` or `FAIL (test N)` to the terminal
+
+The UART `$write` calls in `rtl/periph/uart.sv` also echo characters to stdout during simulation, so you can see all `uart_puts()` output without needing real hardware.
+
+To add `my_test` to the automated test suite that `make run-ctests` runs, add it to the `C_TESTS` list in the Makefile:
+
+```makefile
+C_TESTS := test_timer test_uart test_framebuffer my_test
+```
+
+---
+
+### Step 4 — Run on the FPGA
+
+Simulation exercises the RTL logic correctly but uses a simplified SDRAM stub and runs at arbitrary speed. Running on the real DE10-Lite confirms that timing, pin assignments, and any hardware-specific behaviour all work at 25 MHz.
+
+#### 4a — Select the boot image
+
+```powershell
+.\tools\select_boot_program.ps1 my_test
+```
+
+This does two things:
+- Splits `programs/my_test.x` into four byte-lane files (`data/rom_bank0–3.hex`) — one file per byte of each 32-bit word. The instruction ROM in `rtl/cpu/fetch.sv` is built from four separate M9K blocks (one per byte lane) because Quartus requires each to be initialised independently via `$readmemh`.
+- Updates the `MEM_PATH` macro in `constraints/de10_lite.qsf` so Quartus knows which hex files to embed.
+
+#### 4b — Synthesise (compile RTL → FPGA bitstream)
+
+```powershell
+cd constraints
+quartus_sh --flow compile de10_lite
+```
+
+Quartus reads all the RTL files referenced in `de10_lite.qsf`, synthesises them into logic, maps onto MAX 10 resources, places and routes, runs static timing analysis, and produces `de10_lite.sof` — the FPGA configuration bitstream. The M9K ROM blocks are initialised with your `rom_bank*.hex` data, so your program is baked directly into the bitstream.
+
+This step takes several minutes. It must be run from `constraints/` because the `.qsf` file uses relative paths.
+
+#### 4c — Program the FPGA
+
+```powershell
+quartus_pgm -m jtag -o "p;de10_lite.sof"
+```
+
+This streams the `.sof` bitstream into the DE10-Lite over the USB-Blaster JTAG cable. The FPGA is configured instantly — the SoC comes out of reset and starts executing your program from address `0x0100_0000`.
+
+> **Note:** `.sof` is volatile — the FPGA loses its configuration when powered off. Use `quartus_pgm` with a `.pof` file (also produced by Quartus) to program the on-board flash for persistent storage.
+
+#### 4d — Read the output
+
+The test framework prints results over UART TX (115200 8N1). To read them you need a USB-to-serial adapter connected to the DE10-Lite's GPIO UART pin. Alternatively, write tests that signal results visually — for example, writing a colour pattern to the VGA framebuffer on pass and a different one on fail, which is exactly what `test_framebuffer.c` does.
+
+---
+
+### Full pipeline summary
+
+```
+programs/src/my_test.c
+        │
+        │  bash tools/build.sh my_test
+        │  (gcc cross-compile → objcopy → python hex converter)
+        ▼
+programs/my_test.x  (hex image)
+        │
+        ├─── Simulation ──────────────────────────────────────────────────────
+        │    make run TEST=my_test
+        │    → iverilog compiles RTL + testbench + MEM_PATH define
+        │    → vvp loads .x into ROM via $readmemh, clocks CPU
+        │    → ecall fires → testbench reads x3 → prints PASS / FAIL
+        │
+        └─── Hardware ────────────────────────────────────────────────────────
+             .\tools\select_boot_program.ps1 my_test
+             → splits .x into data/rom_bank0–3.hex, sets MEM_PATH in QSF
+             │
+             cd constraints
+             quartus_sh --flow compile de10_lite
+             → synthesises RTL, maps to MAX 10, embeds rom_bank*.hex in M9K blocks
+             → produces de10_lite.sof (bitstream)
+             │
+             quartus_pgm -m jtag -o "p;de10_lite.sof"
+             → programs FPGA over USB-Blaster
+             → SoC boots, CPU runs my_test from ROM at 0x0100_0000
+             → results appear on UART TX / VGA
+```
+
+---
+
 ## Memory Map
+
 
 | Address | Peripheral |
 |---|---|
