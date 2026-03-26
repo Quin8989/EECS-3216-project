@@ -196,14 +196,19 @@ system-console --script=tools/jtag_loader.tcl myfile.bin
 
 ## Common Workflows
 
-### Smoke test
+### End-to-end smoke test (`tools/smoke_test.ps1`)
+
+`smoke_test.ps1` is a Windows PowerShell script that chains the entire toolchain in one command: compile the C program, synthesise with Quartus, and run the JTAG hardware test. It is the top-level integration check — if it passes, the full pipeline from source to running silicon is confirmed working.
 
 ```powershell
 . .\tools\setup_windows_env.ps1
-.\tools\smoke_test.ps1                     # full: build + Quartus + JTAG
-.\tools\smoke_test.ps1 -SkipQuartus        # skip synthesis
-.\tools\smoke_test.ps1 -SkipJtag           # skip JTAG test
+.\tools\smoke_test.ps1                     # full: build → Quartus compile → JTAG test
+.\tools\smoke_test.ps1 -SkipQuartus        # skip synthesis (use last .sof)
+.\tools\smoke_test.ps1 -SkipJtag           # skip JTAG test (just build + compile)
+.\tools\smoke_test.ps1 -Program test_uart  # choose which C program to build
 ```
+
+Internally it calls `tools/build.sh` (C compile), `quartus_sh --flow compile` (synthesis), and then `system-console --script=tools/test_intel_master.tcl` (JTAG verification). Each step is wrapped in error checking — if any stage fails the script stops and reports the failing step.
 
 ### Framebuffer test on FPGA
 
@@ -217,11 +222,36 @@ quartus_pgm -m jtag -o "p;de10_lite.sof"
 
 Expected output: white border, gradient background, centered red rectangle.
 
-### JTAG master smoke/performance test
+### JTAG master smoke and throughput test (`tools/test_intel_master.tcl`)
+
+This System Console Tcl script is the on-hardware equivalent of the simulation tests — it verifies the JTAG-to-Avalon master IP and the SDRAM bus using the real DE10-Lite, not a simulator.
 
 ```powershell
 system-console --script=tools/test_intel_master.tcl
 ```
+
+It runs two checks in sequence:
+
+1. **Smoke test** — writes `0xCAFEBABE` to SDRAM address `0x0400_0000` and reads it back. If the read-back value does not match, the script prints an error and exits. This confirms the JTAG-to-Avalon master is alive, the Avalon bus is routed correctly, and the SDRAM controller accepted the transaction.
+
+2. **Throughput test** — writes four 16 KB chunks (64 KB total) to consecutive SDRAM addresses and measures how long it takes. Prints KB/s and an extrapolated time to load 4 MB (a typical use case for loading image data). On the DE10-Lite this runs at roughly 190 KB/s.
+
+The script must be run **after** the FPGA has been programmed with a bitstream that includes the JTAG master IP (included in the default build).
+
+### VGA frame capture (simulation only)
+
+When running a simulation that exercises the VGA framebuffer (`make run TEST=test_framebuffer` or any program that writes to `0x8000_0000`), the testbench automatically captures the first two full VGA frames and writes them out as image files:
+
+```
+vga_frame0.ppm   ← frame 0 (640×480, raw PPM format)
+vga_frame1.ppm   ← frame 1
+```
+
+These are written by `tb/vga_capture.sv`. It hooks into the VGA module's internal pixel counters via a hierarchical reference (`dut.u_vga.h_count` / `v_count`) and buffers each active pixel. When the vertical counter leaves the visible region (line 479 → 480), it calls `$fwrite` to flush the accumulated frame to disk.
+
+Open the `.ppm` files in any image viewer (Windows Photos, GIMP, VS Code with the PPM extension) to visually verify what the framebuffer contains. This is useful for checking correct pixel layout, colour encoding (RGB332 → RGB888 expansion), and that writes from the CPU are reaching the SDRAM correctly.
+
+> **PPM format:** Plain binary image — a short ASCII header (`P6\n640 480\n255\n`) followed by raw RGB bytes, one triplet per pixel. No compression, no library needed to generate.
 
 ---
 
