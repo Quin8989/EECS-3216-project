@@ -1,21 +1,18 @@
 # EECS 3216 Project
 #
 # Usage:
-#   make compile              Compile + build simulator binary
+#   make compile              Compile + build Verilator binary
 #   make run                  Compile + simulate
 #   make run TEST=test1       Simulate a specific program
-#   make run-all              Compile + run every ISA + SoC test
+#   make run-all              Run every ISA + SoC test
 #   make run-ctests           Build + simulate all C test programs
 #   make build-tests          Build all C test programs to .x hex
 #   make clean                Remove build artifacts
-#
-# Simulator selection:  SIM=verilator (default)  or  SIM=questa  or  SIM=iverilog
 
 TEST     ?= test1
-SIM      ?= verilator
 TB       ?= test_top
 
-# Convert MSYS /c/… paths to C:/… so Questa/ModelSim can resolve them.
+# Convert MSYS /c/… paths to C:/… so Verilator can resolve them on Windows.
 ifeq ($(OS),Windows_NT)
   ROOT := $(shell cygpath -m "$(realpath $(dir $(lastword $(MAKEFILE_LIST))))")
 else
@@ -41,9 +38,6 @@ SOC_TESTS := $(basename $(notdir $(wildcard $(ROOT)/programs/soc-tests/*.x)))
 
 INC_DIRS := $(ROOT)/rtl/soc $(ROOT)/rtl/cpu $(ROOT)/rtl/periph $(ROOT)/tb
 
-# ---------- Verilator ----------
-ifeq ($(SIM),verilator)
-
 VDIR    := $(ROOT)/work/vl_$(TEST)
 VFLAGS  := --binary --timing --sv \
            $(addprefix +incdir+,$(INC_DIRS)) \
@@ -66,42 +60,6 @@ compile:
 run: compile
 	@echo "=== Run (Verilator) ==="
 	$(VDIR)/V$(TB)
-
-# ---------- iverilog / vvp ----------
-else ifeq ($(SIM),iverilog)
-
-IVFLAGS := -g2012 $(addprefix -I ,$(INC_DIRS)) \
-		   -DMEM_PATH=\"$(MEM_PATH)\"
-VVP     := $(ROOT)/work/$(TB).vvp
-
-compile:
-	@echo "=== Compile (iverilog) ==="
-	@mkdir -p $(ROOT)/work
-	iverilog $(IVFLAGS) -o $(VVP) $(SRC)
-
-run: compile
-	@echo "=== Run (vvp) ==="
-	vvp $(VVP)
-
-# ---------- Questa / ModelSim ----------
-else ifeq ($(SIM),questa)
-
-compile:
-	@echo "=== Compile (Questa) ==="
-	vlog -work $(ROOT)/work \
-		-suppress 7061 -sv \
-		$(addprefix +incdir+,$(INC_DIRS)) \
-		"+define+MEM_PATH=\"$(MEM_PATH)\"" \
-		$(SRC)
-
-run: compile
-	@echo "=== Run (vsim) ==="
-	@echo "run -all" > $(ROOT)/run.macro
-	vsim -suppress 3839 -c \
-		-do $(ROOT)/run.macro \
-		$(ROOT)/work.$(TB)
-
-endif
 
 # ---------- Run all ISA + SoC tests ----------
 run-all:

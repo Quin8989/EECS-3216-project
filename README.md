@@ -81,9 +81,8 @@ EECS-3216-project/
 ├── ip/                     # Quartus Platform Designer IP cores
 │   └── jtag_master/        #   Intel JTAG-to-Avalon master (used for SDRAM and keyboard injection)
 │
-├── rtl_sources.f           # Ordered RTL file list consumed by iverilog and Questa
-├── Makefile                # Simulation targets: run, run-all, run-ctests, build-tests, clean
-└── york_lab_env.sh         # York University lab only: adds ModelSim/Quartus tools to PATH
+├── rtl_sources.f           # Ordered RTL file list consumed by Verilator
+└── Makefile                # Simulation targets: run, run-all, run-ctests, build-tests, clean
 ```
 
 ---
@@ -92,19 +91,9 @@ EECS-3216-project/
 
 ### Required tools
 
-- Quartus Prime Lite (tested with 20.1 and 25.1std) with MAX 10 device support
+- Quartus Prime Lite (tested with 25.1std) with MAX 10 device support
 - `system-console` from Quartus
-
-> **JTAG IP version note:** The committed `ip/jtag_master/` was generated
-> with Quartus 25.1. If you are on an older Quartus (e.g. 20.1 at York),
-> regenerate it before synthesis:
->
-> ```powershell
-> cd ip
-> qsys-script --script=create_jtag_master.tcl
-> ```
-- MSYS2 or another environment providing `bash`, `make`, and `python3`
-- `iverilog` for simulation
+- MSYS2 providing `bash`, `make`, `python3`, and [Verilator](https://verilator.org/) for simulation
 - `riscv64-unknown-elf-gcc` **14.x or newer** — required for `-march=rv32i_zmmul` support (GCC 13 and earlier will reject this flag; change to `-march=rv32i` in `tools/build.sh` as a workaround, losing hardware MUL in C programs)
 
 ### Windows PATH
@@ -121,21 +110,6 @@ MSYS2 tools (`bash`, RISC-V cross tools, `python3`) are expected in:
 C:\msys64\usr\bin
 C:\msys64\mingw64\bin
 C:\msys64\ucrt64\bin
-```
-
-### York University lab (Linux)
-
-The lab machines have Quartus, ModelSim, and the RISC-V toolchain pre-installed. Source the environment script:
-
-```bash
-source york_lab_env.sh
-```
-
-The Makefile supports ModelSim/Questa via the `SIM` variable:
-
-```bash
-make run-all SIM=questa           # run all tests with ModelSim/Questa
-make run TEST=rv32ui-p-add SIM=questa
 ```
 
 ## Quick Start
@@ -181,12 +155,6 @@ quartus_sh --flow compile de10_lite
 quartus_pgm -m jtag -o "p;de10_lite.sof"
 ```
 
-**York lab (Linux)**:
-```bash
-cd constraints
-quartus_sh --flow compile de10_lite
-quartus_pgm -m jtag -o "p;de10_lite.sof"
-```
 
 ### 5. Load data into SDRAM over JTAG
 
@@ -271,15 +239,6 @@ quartus_pgm -m jtag -o "p;de10_lite.sof"
 Pop-Location
 ```
 
-**York lab (Linux):**
-```bash
-source york_lab_env.sh
-.\tools\select_boot_program.ps1 demo_plasma   # or set MEM_PATH manually in QSF
-cd constraints
-quartus_sh --flow compile de10_lite
-quartus_pgm -m jtag -o "p;de10_lite.sof"
-```
-
 Expected output: animated plasma colours fill the screen continuously.
 
 ---
@@ -303,17 +262,6 @@ quartus_pgm -m jtag -o "p;de10_lite.sof"
 Pop-Location
 ```
 
-**York lab (Linux):**
-```bash
-source york_lab_env.sh
-bash tools/build.sh demo_keyboard_vga       # only if source changed
-# edit constraints/de10_lite.qsf: set MEM_PATH to "../programs/demo_keyboard_vga.x"
-# or use select_boot_program.ps1 under bash/pwsh
-cd constraints
-quartus_sh --flow compile de10_lite
-quartus_pgm -m jtag -o "p;de10_lite.sof"
-```
-
 The VGA output will show the title screen once the FPGA is programmed.
 
 #### Step 2 — Start the JTAG keyboard server (System Console)
@@ -323,12 +271,6 @@ Open a **new terminal** and run:
 **Windows:**
 ```powershell
 . .\tools\setup_windows_env.ps1
-system-console --no-gui --script=tools/keyboard_server.tcl
-```
-
-**York lab (Linux):**
-```bash
-source york_lab_env.sh
 system-console --no-gui --script=tools/keyboard_server.tcl
 ```
 
@@ -345,11 +287,6 @@ Open another **new terminal** and run:
 **Windows:**
 ```powershell
 python tools\keyboard_inject.py
-```
-
-**York lab (Linux):**
-```bash
-python3 tools/keyboard_inject.py
 ```
 
 You will see:
@@ -460,9 +397,9 @@ make run TEST=my_test
 ```
 
 What the Makefile does:
-1. Passes `-DMEM_PATH="programs/my_test.x"` to `iverilog` as a compile-time define
-2. Compiles every RTL file listed in `rtl_sources.f` plus the testbench files in `tb/` into a single simulation executable (`work/test_top.vvp`)
-3. Runs `vvp work/test_top.vvp` — this executes the simulation. The testbench's `$readmemh(MEM_PATH, ...)` call fills the ROM with your program's hex words, the clock starts, and the CPU runs your code
+1. Passes `-DMEM_PATH="programs/my_test.x"` to Verilator as a compile-time define
+2. Compiles every RTL file listed in `rtl_sources.f` plus the testbench files in `tb/` into a simulation binary (`work/vl_my_test/Vtest_top`)
+3. Runs the binary — this executes the simulation. The testbench's `$readmemh(MEM_PATH, ...)` call fills the ROM with your program's hex words, the clock starts, and the CPU runs your code
 4. When `ecall` is executed, the testbench checks `x3` and prints `PASS` or `FAIL (test N)` to the terminal
 
 The UART `$write` calls in `rtl/periph/uart.sv` also echo characters to stdout during simulation, so you can see all `uart_puts()` output without needing real hardware.
@@ -528,8 +465,8 @@ programs/my_test.x  (hex image)
         │
         ├─── Simulation ──────────────────────────────────────────────────────
         │    make run TEST=my_test
-        │    → iverilog compiles RTL + testbench + MEM_PATH define
-        │    → vvp loads .x into ROM via $readmemh, clocks CPU
+        │    → Verilator compiles RTL + testbench + MEM_PATH define
+        │    → binary loads .x into ROM via $readmemh, clocks CPU
         │    → ecall fires → testbench reads x3 → prints PASS / FAIL
         │
         └─── Hardware ────────────────────────────────────────────────────────
