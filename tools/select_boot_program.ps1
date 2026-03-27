@@ -24,7 +24,7 @@ if (-not (Test-Path $programFile)) {
 }
 
 $hexLines = Get-Content $programFile | Where-Object { $_ -match '^[0-9A-Fa-f]+$' }
-$depth = 1024
+$depth = 16384
 
 for ($bank = 0; $bank -lt 4; $bank++) {
     $offset = $bank * 2
@@ -61,5 +61,11 @@ $updatedQsfText = $memPathRegex.Replace(
 
 Write-Host "Selected boot program: $programName"
 Write-Host "Updated: constraints/de10_lite.qsf"
-Write-Host "Updated: data/rom_bank0.hex .. data/rom_bank3.hex"
-Write-Host "Next: rebuild Quartus and program constraints/de10_lite.sof"
+Write-Host "Updated: data/rom_bank0.hex .. data/rom_bank3.hex  ($($hexLines.Count) words, depth=$depth)"
+Write-Host ""
+Write-Host "IMPORTANT: ROM content is read during synthesis (quartus_map)."
+Write-Host "           You must do a FULL recompile (quartus_sh --flow compile)."
+Write-Host "           quartus_cdb --update_mif does NOT re-read `$readmemh files."
+Write-Host ""
+Write-Host "Next:  cd constraints; quartus_sh --flow compile de10_lite"
+Write-Host "       quartus_pgm -m jtag -o 'P;de10_lite.sof'"

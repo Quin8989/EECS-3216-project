@@ -7,358 +7,184 @@
 
 A small RISC-V SoC targeting the Intel DE10-Lite (MAX 10, 25 MHz).
 
-- RV32I CPU with 2-cycle `MUL` (Zmmul — no DIV/REM)
-- 4 KB instruction ROM
-- 8 KB on-chip RAM
-- 64 MB external SDRAM via nullobject controller
-- JTAG-to-Avalon master for SDRAM load/read over USB
-- 320x240 8bpp (RGB332) VGA framebuffer scaled to 640x480
-- UART TX (115200 8N1) for debug output
-- 32-bit free-running timer with compare + match flag
-- PS/2 keyboard input via JTAG injection at `0x4000_0000`
-
-## Current Status
-
-- 41/41 simulation tests pass (38 `rv32ui-p-*` ISA + 1 `rv32um-p-mul` + 2 SoC tests)
-- 3/3 C peripheral tests pass (`test_timer`, `test_uart`, `test_framebuffer`)
-- Quartus build closes timing with current constraints
-- JTAG SDRAM load path works at ~190 KB/s
+| Feature | Detail |
+|---|---|
+| ISA | RV32I + Zmmul (hardware MUL, no DIV/REM) |
+| Instruction ROM | 64 KB on-chip block RAM (4 × byte-wide banks) |
+| Data RAM | 8 KB on-chip |
+| Display | 320×240 8 bpp (RGB332) on-chip framebuffer, 2× scaled to 640×480 |
+| Input | PS/2 keyboard via JTAG injection at `0x4000_0000` |
+| UART | TX-only, 115200 8N1 |
+| Timer | 32-bit free-running counter with compare + match flag |
+| JTAG | Intel JTAG-to-Avalon master for keyboard injection |
 
 ## Repository Structure
 
 ```
-EECS-3216-project/
-├── rtl/                    # Hardware source (synthesised + simulated)
-│   ├── cpu/                #   Processor: fetch stage + single-cycle RV32I+Zmmul CPU
-│   ├── periph/             #   Peripherals: RAM, UART, timer, keyboard, VGA framebuffer, SDRAM bridge
-│   ├── soc/                #   SoC integration: address decoder, simulation top, FPGA pin wrapper
-│   └── vendor/sdram/       #   Third-party SDRAM controller IP (MIT licence, inlined)
+├── rtl/
+│   ├── cpu/            Processor core (RV32I+Zmmul, 10 files)
+│   ├── periph/         RAM, UART, timer, keyboard, VGA framebuffer
+│   └── soc/            Address decoder + SoC integration, FPGA wrapper, constants
 │
-├── tb/                     # Simulation-only files (never synthesised)
-│   ├── test_top.sv         #   Main testbench: clocks DUT, checks pass/fail via x3 register
-│   ├── sdram_ctrl_stub.sv  #   Fast SDRAM stub (3-cycle latency) — replaces real controller in sim
-│   └── vga_capture.sv      #   Writes VGA frames to vga_frame*.ppm for visual inspection
+├── tb/                 Testbench, VGA frame capture
+├── programs/
+│   ├── *.x             Pre-built boot images (hex, one word per line)
+│   ├── isa-tests/      RV32UI + RV32UM ISA test images
+│   ├── soc-tests/      SoC peripheral test images
+│   └── src/            C/asm sources, linker scripts, shared headers
 │
-├── programs/               # Software images loaded into the instruction ROM
-│   ├── *.x                 #   Pre-built boot images (one 32-bit hex word per line)
-│   ├── isa-tests/          #   38 rv32ui + 1 rv32um pre-built ISA test images
-│   └── soc-tests/          #   2 SoC peripheral test images (RAM, SDRAM)
+├── tools/              Build scripts, JTAG loader, keyboard server
+├── constraints/        Quartus project, pin assignments, timing constraints
+├── data/               ROM bank hex files for Quartus synthesis
+├── ip/                 Intel JTAG-to-Avalon master IP
 │
-├── programs/src/           # Software source tree
-│   ├── soc.h               #   Shared header: MMIO macros, UART helpers, test framework
-│   ├── crt0.s              #   C runtime startup: sets stack, copies .data, zeroes .bss, calls main
-│   ├── link.ld             #   Linker script: ROM @ 0x0100_0000 (4 KB), RAM @ 0x0200_0000 (8 KB)
-│   ├── test_*.c            #   Peripheral integration tests (timer, UART, framebuffer)
-│   ├── demo_plasma.c       #   Animated plasma VGA demo (sine LUT, RGB332 framebuffer)
-│   ├── demo_keyboard_vga.c #   VGA text terminal demo (40×30, 8×8 font, JTAG keyboard input)
-│   ├── rv32um-p-mul.S      #   Custom MUL instruction test (assembly source)
-│   ├── soc-p-ram.S         #   On-chip RAM byte/half/word access test (assembly source)
-│   └── soc-p-sdram.S       #   SDRAM write/readback test (assembly source)
-│
-├── tools/                  # Build and deployment scripts
-│   ├── build.sh            #   Compile a C program from programs/src/ into programs/<name>.x
-│   ├── build_asm.sh        #   Assemble a .S test into a .x hex image
-│   ├── select_boot_program.ps1  # Split a .x image into rom_bank*.hex and update QSF MEM_PATH
-│   ├── setup_windows_env.ps1    # Add Quartus + MSYS2 to PATH (dot-source before other scripts)
-│   ├── smoke_test.ps1      #   End-to-end: build → Quartus compile → program FPGA
-│   ├── jtag_loader.tcl     #   System Console script: load a binary file into SDRAM over JTAG
-│   ├── keyboard_server.tcl #   System Console script: TCP server (port 2540) → JTAG keyboard write
-│   ├── keyboard_inject.py  #   Python: capture desktop keystrokes → send to keyboard_server.tcl
-│   └── test_intel_master.tcl   # System Console script: JTAG master smoke + throughput test
-│
-├── constraints/            # Quartus project files
-│   ├── de10_lite.qpf       #   Quartus project descriptor
-│   ├── de10_lite.qsf       #   Settings: device, pin assignments, MEM_PATH, IP references
-│   ├── de10_lite.sdc       #   Timing constraints (clocks, SDRAM I/O, VGA output delays)
-│   ├── pin_check4.tcl      #   Diagnostic: print pin assignments from Pin Planner report
-│   └── timing_report.tcl   #   Diagnostic: run TimeQuest and print 5 worst setup paths
-│                           #   (de10_lite.sof / .pof are generated by Quartus, gitignored)
-│
-├── data/                   # ROM initialisation data for Quartus synthesis
-│   ├── rom_bank0.hex       #   Byte lane 0 (bits  7:0) of the selected boot image
-│   ├── rom_bank1.hex       #   Byte lane 1 (bits 15:8)
-│   ├── rom_bank2.hex       #   Byte lane 2 (bits 23:16)
-│   └── rom_bank3.hex       #   Byte lane 3 (bits 31:24)
-│                           #   Generated by select_boot_program.ps1; read by fetch.sv $readmemh
-│
-├── ip/                     # Quartus Platform Designer IP cores
-│   └── jtag_master/        #   Intel JTAG-to-Avalon master (used for SDRAM and keyboard injection)
-│
-├── rtl_sources.f           # Ordered RTL file list consumed by Verilator
-└── Makefile                # Simulation targets: run, run-all, run-ctests, build-tests, clean
+├── rtl_sources.f       RTL file list for Verilator
+└── Makefile            Simulation targets
 ```
-
----
 
 ## Setup
 
-### Required tools
+### Required Tools
 
-- Quartus Prime Lite (tested with 25.1std) with MAX 10 device support
-- `system-console` from Quartus
-- MSYS2 providing `bash`, `make`, `python3`, and [Verilator](https://verilator.org/) for simulation
-- `riscv64-unknown-elf-gcc` **14.x or newer** — required for `-march=rv32i_zmmul` support (GCC 13 and earlier will reject this flag; change to `-march=rv32i` in `tools/build.sh` as a workaround, losing hardware MUL in C programs)
+- **Quartus Prime Lite** (tested with 25.1std) with MAX 10 device support
+- **MSYS2** providing `bash`, `make`, `python3`, and [Verilator](https://verilator.org/)
+- **riscv64-unknown-elf-gcc 14.x+** — required for `-march=rv32i_zmmul`
 
 ### Windows PATH
 
-Run the auto-detection script from the repo root:
-
 ```powershell
 . .\tools\setup_windows_env.ps1
 ```
-
-MSYS2 tools (`bash`, RISC-V cross tools, `python3`) are expected in:
-
-```text
-C:\msys64\usr\bin
-C:\msys64\mingw64\bin
-C:\msys64\ucrt64\bin
-```
-
-## Quick Start
-
-### 1. Run simulation
-
-```bash
-make run TEST=rv32ui-p-add   # single ISA test
-make run TEST=test_framebuffer  # single C test
-make run-all                 # all 41 ISA + SoC tests
-make run-ctests              # build + run C peripheral tests
-```
-
-### 2. Build a program image
-
-C programs are built from `programs/src/` into `programs/<name>.x`:
-
-```bash
-bash tools/build.sh test_framebuffer
-```
-
-Assembly tests are built into `programs/isa-tests/` or `programs/soc-tests/`:
-
-```bash
-bash tools/build_asm.sh programs/src/rv32um-p-mul.S programs/isa-tests/rv32um-p-mul.x
-```
-
-### 3. Select the boot image for synthesis
-
-```powershell
-.\tools\select_boot_program.ps1 test_framebuffer
-```
-
-This updates `MEM_PATH` in `constraints/de10_lite.qsf` and regenerates ROM bank hex files.
-
-### 4. Compile and program the FPGA
-
-**Windows** (must run from `constraints/` — see note below):
-```powershell
-. .\tools\setup_windows_env.ps1
-cd constraints
-quartus_sh --flow compile de10_lite
-quartus_pgm -m jtag -o "p;de10_lite.sof"
-```
-
-
-### 5. Load data into SDRAM over JTAG
-
-```powershell
-system-console --script=tools/jtag_loader.tcl myfile.bin
-```
-
-## Common Workflows
-
-### End-to-end smoke test (`tools/smoke_test.ps1`)
-
-`smoke_test.ps1` is a Windows PowerShell script that chains the entire toolchain in one command: compile the C program, synthesise with Quartus, and run the JTAG hardware test. It is the top-level integration check — if it passes, the full pipeline from source to running silicon is confirmed working.
-
-```powershell
-. .\tools\setup_windows_env.ps1
-.\tools\smoke_test.ps1                     # full: build → Quartus compile → JTAG test
-.\tools\smoke_test.ps1 -SkipQuartus        # skip synthesis (use last .sof)
-.\tools\smoke_test.ps1 -SkipJtag           # skip JTAG test (just build + compile)
-.\tools\smoke_test.ps1 -Program test_uart  # choose which C program to build
-```
-
-Internally it calls `tools/build.sh` (C compile), `quartus_sh --flow compile` (synthesis), and then `system-console --script=tools/test_intel_master.tcl` (JTAG verification). Each step is wrapped in error checking — if any stage fails the script stops and reports the failing step.
-
-### Framebuffer test on FPGA
-
-```powershell
-bash tools/build.sh test_framebuffer
-.\tools\select_boot_program.ps1 test_framebuffer
-cd constraints
-quartus_sh --flow compile de10_lite
-quartus_pgm -m jtag -o "p;de10_lite.sof"
-```
-
-Expected output: white border, gradient background, centered red rectangle.
-
-### JTAG master smoke and throughput test (`tools/test_intel_master.tcl`)
-
-This System Console Tcl script is the on-hardware equivalent of the simulation tests — it verifies the JTAG-to-Avalon master IP and the SDRAM bus using the real DE10-Lite, not a simulator.
-
-```powershell
-system-console --script=tools/test_intel_master.tcl
-```
-
-It runs two checks in sequence:
-
-1. **Smoke test** — writes `0xCAFEBABE` to SDRAM address `0x0400_0000` and reads it back. If the read-back value does not match, the script prints an error and exits. This confirms the JTAG-to-Avalon master is alive, the Avalon bus is routed correctly, and the SDRAM controller accepted the transaction.
-
-2. **Throughput test** — writes four 16 KB chunks (64 KB total) to consecutive SDRAM addresses and measures how long it takes. Prints KB/s and an extrapolated time to load 4 MB (a typical use case for loading image data). On the DE10-Lite this runs at roughly 190 KB/s.
-
-The script must be run **after** the FPGA has been programmed with a bitstream that includes the JTAG master IP (included in the default build).
-
-### VGA frame capture (simulation only)
-
-When running a simulation that exercises the VGA framebuffer (`make run TEST=test_framebuffer` or any program that writes to `0x8000_0000` — the start of SDRAM), the testbench automatically captures the first two full VGA frames and writes them out as image files:
-
-```
-vga_frame0.ppm   ← frame 0 (640×480, raw PPM format)
-vga_frame1.ppm   ← frame 1
-```
-
-These are written by `tb/vga_capture.sv`. It hooks into the VGA module's internal pixel counters via a hierarchical reference (`dut.u_vga.h_count` / `v_count`) and buffers each active pixel. When the vertical counter leaves the visible region (line 479 → 480), it calls `$fwrite` to flush the accumulated frame to disk.
-
-Open the `.ppm` files in any image viewer (Windows Photos, GIMP, VS Code with the PPM extension) to visually verify what the framebuffer contains. This is useful for checking correct pixel layout, colour encoding (RGB332 → RGB888 expansion), and that writes from the CPU are reaching the SDRAM correctly.
-
-> **PPM format:** Plain binary image — a short ASCII header (`P6\n640 480\n255\n`) followed by raw RGB bytes, one triplet per pixel. No compression, no library needed to generate.
 
 ---
 
-## Demo Programs
+## Simulation
 
-### Plasma animation (`demo_plasma`)
+The Verilator binary is compiled **once** and reused for every test. Programs are loaded at runtime via `+MEM_PATH` plusarg — no recompilation needed to switch programs.
 
-Renders an animated colour-plasma pattern on the 320×240 VGA framebuffer. Loops forever — no keyboard or serial terminal needed.
+```bash
+make compile                    # build Verilator binary (once)
+make run TEST=rv32ui-p-add      # run one ISA test
+make run TEST=test_framebuffer  # run one C test
+make run-all                    # run all ISA + SoC tests (sequential)
+make run-all -j$(nproc)         # run all tests in parallel (all cores)
+make run-ctests                 # build + run all C tests
+```
 
-**Windows:**
+### How It Works
+
+1. `make compile` builds a single Verilator binary at `work/sim/Vtest_top`
+2. `make run TEST=X` invokes that binary with `+MEM_PATH=programs/.../X.x`
+3. The testbench's `$readmemh` loads the hex file into ROM at runtime
+4. The CPU runs until `ecall` — the testbench reads register `x3` and prints `PASS` or `FAIL`
+
+Changing programs is instant — no recompilation. The stamp file `work/sim/.built` tracks source changes so `make compile` is only re-run when RTL changes.
+
+---
+
+## FPGA Pipeline
+
+> **Key constraint:** ROM contents are baked during synthesis (`$readmemh` in `quartus_map`).
+> Changing the boot program requires a **full Quartus recompile**. `quartus_cdb --update_mif`
+> does NOT re-read `$readmemh` files.
+
+### Build and Program
+
 ```powershell
 . .\tools\setup_windows_env.ps1
-.\tools\select_boot_program.ps1 demo_plasma
-Push-Location .\constraints
+
+# 1. Compile C → hex image
+bash tools/build.sh wolf3d
+
+# 2. Split into ROM banks + update QSF
+.\tools\select_boot_program.ps1 wolf3d
+
+# 3. Synthesize (from constraints/ directory)
+Push-Location constraints
 quartus_sh --flow compile de10_lite
 quartus_pgm -m jtag -o "p;de10_lite.sof"
 Pop-Location
 ```
 
-Expected output: animated plasma colours fill the screen continuously.
+### Swap Programs
+
+```powershell
+bash tools/build.sh <program>               # if source changed
+.\tools\select_boot_program.ps1 <program>
+Push-Location constraints
+quartus_sh --flow compile de10_lite          # full recompile required
+quartus_pgm -m jtag -o "p;de10_lite.sof"
+Pop-Location
+```
 
 ---
 
-### Keyboard VGA terminal (`demo_keyboard_vga`)
+## Wolf3D Raycaster Demo
 
-Renders a 40×30 text terminal on the VGA framebuffer. Characters are injected from your desktop keyboard over JTAG — no PS/2 hardware needed. Supports printable ASCII, Backspace, and Enter with scroll.
+Fixed-point (Q16.16) raycaster rendering coloured walls onto the VGA framebuffer. Requires **three terminals**.
 
-Requires **three terminals** running simultaneously.
+### Terminal 1 — Build and Program
 
-#### Step 1 — Build, select, compile, and program the FPGA
-
-**Windows:**
 ```powershell
 . .\tools\setup_windows_env.ps1
-bash tools/build.sh demo_keyboard_vga       # only needed if you changed the C source
-.\tools\select_boot_program.ps1 demo_keyboard_vga
-Push-Location .\constraints
+bash tools/build.sh wolf3d
+.\tools\select_boot_program.ps1 wolf3d
+Push-Location constraints
 quartus_sh --flow compile de10_lite
 quartus_pgm -m jtag -o "p;de10_lite.sof"
 Pop-Location
 ```
 
-The VGA output will show the title screen once the FPGA is programmed.
+### Terminal 2 — JTAG Keyboard Server
 
-#### Step 2 — Start the JTAG keyboard server (System Console)
-
-Open a **new terminal** and run:
-
-**Windows:**
 ```powershell
 . .\tools\setup_windows_env.ps1
 system-console --no-gui --script=tools/keyboard_server.tcl
 ```
 
-Wait until you see:
-```
-Keyboard server listening on TCP port 2540.
-Run  python3 tools/keyboard_inject.py  to connect.
-```
+### Terminal 3 — Keyboard Injector
 
-#### Step 3 — Connect the keyboard injector
-
-Open another **new terminal** and run:
-
-**Windows:**
 ```powershell
 python tools\keyboard_inject.py
 ```
 
-You will see:
-```
-Connected.  Type on your keyboard — chars appear on the FPGA VGA output.
-```
+**Controls:** `W`/`S` forward/backward, `A`/`D` strafe, `,`/`.` rotate.
 
-Now type — characters appear on the screen in real time. Press **Ctrl+C** in the Python terminal to quit.
-
-#### How it works
+### Keyboard Input Path
 
 ```
-Your keyboard
-    │  (raw keystroke)
-    ▼
-keyboard_inject.py  ──TCP:2540──►  keyboard_server.tcl (System Console)
-                                            │  master_write_32 0x4FFFFF00
-                                            ▼
-                                    JTAG-to-Avalon master IP
-                                            │  Avalon bus write
-                                            ▼
-                                    top_fpga.sv (intercepts address)
-                                            │  jtag_kbd_valid + jtag_kbd_code
-                                            ▼
-                                    keyboard.sv peripheral @ 0x40000000
-                                            │  KBD_DATA / KBD_STATUS
-                                            ▼
-                                    demo_keyboard_vga.c (polls KBD_STATUS)
-                                            │  draws character on framebuffer
-                                            ▼
-                                    VGA output (320×240)
+keyboard_inject.py ──TCP:2540──► keyboard_server.tcl (System Console)
+    ──JTAG write 0x4FFFFF00──► top_fpga.sv (intercepts)
+    ──► keyboard.sv @ 0x40000000 ──► wolf3d.c polls KBD_STATUS/KBD_DATA
 ```
 
 ---
 
-## Writing and Testing a New C Program
+## Memory Map
 
-This section walks through the full lifecycle of a C program on this SoC — from source file to simulation to running on real hardware.
-
-### Key concepts
-
-**MMIO (Memory-Mapped I/O)**
-Peripherals (UART, timer, keyboard, VGA) are controlled by reading and writing specific memory addresses rather than using special CPU instructions. For example, writing a byte to address `0x1000_0000` queues it for UART transmission. The file `programs/src/soc.h` defines C macros for all of these addresses so you don't have to remember the raw numbers.
-
-**The `.x` hex image**
-After compiling, the program is stripped down to just the bytes that go into ROM (`.text` + `.rodata` — the machine code and read-only constants). These bytes are then written out as a plain text file where each line is one 32-bit word in hex, e.g. `00500113`. This is what `$readmemh` in SystemVerilog understands — it reads this file line by line at simulation startup and fills the ROM array with those values, so the CPU sees your program when it fetches from address `0x0100_0000`.
-
-**The testbench (`tb/test_top.sv`)**
-A testbench is a simulation wrapper that drives a hardware design and checks its outputs. `test_top.sv` instantiates the entire SoC (CPU, RAM, peripherals, SDRAM stub), generates a 25 MHz clock, holds reset for a few cycles, then lets the CPU run. It watches every instruction and when it sees `ecall` (an environment call — used here as a "halt" signal), it reads register `x3` to determine pass or fail. Register `x3` is set by `crt0.s` to the return value of `main()`.
-
-**`crt0.s` — the C runtime**
-When the CPU boots, the first instruction it runs is not `main()` — it is the startup code in `crt0.s`. This sets up the stack pointer, copies any initialised global variables from ROM into RAM (they are stored in ROM because RAM loses its contents at reset), zeroes the BSS section (uninitialised globals), and then calls `main()`. When `main()` returns, `crt0.s` captures the return value into `x3` and executes `ecall` to halt the simulation.
-
-**The test framework (`soc.h`)**
-`test_begin()`, `test_run()`, and `test_end()` are thin macros/functions that print results over UART and track pass/fail counts. `test_end()` returns `1` if all tests passed (which `crt0.s` puts into `x3`, causing the testbench to print `PASS`) or `0` if any failed. `test_assert(cond, msg)` is like an assertion — if the condition is false it immediately returns an error code from the enclosing test function.
+| Address | Peripheral | Size |
+|---|---|---|
+| `0x0100_0000` | Instruction ROM | 64 KB |
+| `0x0200_0000` | On-chip data RAM | 8 KB |
+| `0x1000_0000` | UART TX | 3 registers |
+| `0x2000_0000` | Timer | 3 registers |
+| `0x3000_0000` | VGA status | 1 register (bit 0 = blanking) |
+| `0x4000_0000` | Keyboard | 2 registers |
+| `0x8000_0000` | On-chip framebuffer | 75 KB (320×240 RGB332, dual-port) |
 
 ---
 
-### Step 1 — Write the source file
+## Writing a New C Program
 
-Create `programs/src/my_test.c`. Include `soc.h` and use the test framework:
+### 1. Create Source
+
+Create `programs/src/my_test.c`:
 
 ```c
 #include "soc.h"
 
-// Each test function returns 0 on success, non-zero on failure.
 static int test_timer_runs(void) {
     unsigned int t0 = TIMER_COUNT;
-    // Spin for a bit (the timer increments every clock cycle at 25 MHz)
     for (volatile int i = 0; i < 1000; i++);
     unsigned int t1 = TIMER_COUNT;
     test_assert(t1 > t0, "timer did not advance");
@@ -366,185 +192,68 @@ static int test_timer_runs(void) {
 }
 
 int main(void) {
-    test_begin("My Timer Test");   // prints heading over UART
-    test_run(test_timer_runs);     // runs the function, prints PASS/FAIL
-    return test_end();             // prints summary; returns 1=PASS or 0=FAIL
+    test_begin("My Timer Test");
+    test_run(test_timer_runs);
+    return test_end();   // returns 1=PASS, 0=FAIL → crt0.s → x3 → testbench
 }
-// main's return value → crt0.s → x3 register → testbench checks → prints PASS/FAIL
 ```
 
-**`TIMER_COUNT`** is simply `*(volatile unsigned int *)0x20000000` — a C pointer cast to the timer's MMIO address. The `volatile` keyword tells the compiler not to optimise away repeated reads (since the hardware changes the value independently of the CPU).
-
----
-
-### Step 2 — Compile to a `.x` image
+### 2. Build
 
 ```bash
-bash tools/build.sh my_test
-# reads:  programs/src/my_test.c  +  programs/src/crt0.s  +  programs/src/link.ld
-# writes: programs/my_test.x   (hex image)
-#         programs/my_test.objdmp  (disassembly, for debugging)
+bash tools/build.sh my_test    # → programs/my_test.x
 ```
 
-Internally `build.sh` calls:
-1. `riscv64-unknown-elf-gcc` — cross-compiles for RV32I+Zmmul (produces a RISC-V ELF binary on your x86 PC)
-2. `objcopy` — strips the ELF down to just the raw `.text` + `.rodata` bytes
-3. A small Python script — converts the raw binary into one hex word per line → `my_test.x`
-
----
-
-### Step 3 — Simulate
+### 3. Simulate
 
 ```bash
 make run TEST=my_test
 ```
 
-What the Makefile does:
-1. Passes `-DMEM_PATH="programs/my_test.x"` to Verilator as a compile-time define
-2. Compiles every RTL file listed in `rtl_sources.f` plus the testbench files in `tb/` into a simulation binary (`work/vl_my_test/Vtest_top`)
-3. Runs the binary — this executes the simulation. The testbench's `$readmemh(MEM_PATH, ...)` call fills the ROM with your program's hex words, the clock starts, and the CPU runs your code
-4. When `ecall` is executed, the testbench checks `x3` and prints `PASS` or `FAIL (test N)` to the terminal
-
-The UART `$write` calls in `rtl/periph/uart.sv` also echo characters to stdout during simulation, so you can see all `uart_puts()` output without needing real hardware.
-
-To add `my_test` to the automated test suite that `make run-ctests` runs, add it to the `C_TESTS` list in the Makefile:
-
-```makefile
-C_TESTS := test_timer test_uart test_framebuffer my_test
-```
-
----
-
-### Step 4 — Run on the FPGA
-
-Simulation exercises the RTL logic correctly but uses a simplified SDRAM stub and runs at arbitrary speed. Running on the real DE10-Lite confirms that timing, pin assignments, and any hardware-specific behaviour all work at 25 MHz.
-
-#### 4a — Select the boot image
+### 4. Run on FPGA
 
 ```powershell
 .\tools\select_boot_program.ps1 my_test
-```
-
-This does two things:
-- Splits `programs/my_test.x` into four byte-lane files (`data/rom_bank0–3.hex`) — one file per byte of each 32-bit word. The instruction ROM in `rtl/cpu/fetch.sv` is built from four separate M9K blocks (one per byte lane) because Quartus requires each to be initialised independently via `$readmemh`.
-- Updates the `MEM_PATH` macro in `constraints/de10_lite.qsf` so Quartus knows which hex files to embed.
-
-#### 4b — Synthesise (compile RTL → FPGA bitstream)
-
-```powershell
-cd constraints
+Push-Location constraints
 quartus_sh --flow compile de10_lite
-```
-
-Quartus reads all the RTL files referenced in `de10_lite.qsf`, synthesises them into logic, maps onto MAX 10 resources, places and routes, runs static timing analysis, and produces `de10_lite.sof` — the FPGA configuration bitstream. The M9K ROM blocks are initialised with your `rom_bank*.hex` data, so your program is baked directly into the bitstream.
-
-This step takes several minutes. It must be run from `constraints/` because the `.qsf` file uses relative paths.
-
-#### 4c — Program the FPGA
-
-```powershell
 quartus_pgm -m jtag -o "p;de10_lite.sof"
-```
-
-This streams the `.sof` bitstream into the DE10-Lite over the USB-Blaster JTAG cable. The FPGA is configured instantly — the SoC comes out of reset and starts executing your program from address `0x0100_0000`.
-
-> **Note:** `.sof` is volatile — the FPGA loses its configuration when powered off. Use `quartus_pgm` with a `.pof` file (also produced by Quartus) to program the on-board flash for persistent storage.
-
-#### 4d — Read the output
-
-The test framework prints results over UART TX (115200 8N1). To read them you need a USB-to-serial adapter connected to the DE10-Lite's GPIO UART pin. Alternatively, write tests that signal results visually — for example, writing a colour pattern to the VGA framebuffer on pass and a different one on fail, which is exactly what `test_framebuffer.c` does.
-
----
-
-### Full pipeline summary
-
-```
-programs/src/my_test.c
-        │
-        │  bash tools/build.sh my_test
-        │  (gcc cross-compile → objcopy → python hex converter)
-        ▼
-programs/my_test.x  (hex image)
-        │
-        ├─── Simulation ──────────────────────────────────────────────────────
-        │    make run TEST=my_test
-        │    → Verilator compiles RTL + testbench + MEM_PATH define
-        │    → binary loads .x into ROM via $readmemh, clocks CPU
-        │    → ecall fires → testbench reads x3 → prints PASS / FAIL
-        │
-        └─── Hardware ────────────────────────────────────────────────────────
-             .\tools\select_boot_program.ps1 my_test
-             → splits .x into data/rom_bank0–3.hex, sets MEM_PATH in QSF
-             │
-             cd constraints
-             quartus_sh --flow compile de10_lite
-             → synthesises RTL, maps to MAX 10, embeds rom_bank*.hex in M9K blocks
-             → produces de10_lite.sof (bitstream)
-             │
-             quartus_pgm -m jtag -o "p;de10_lite.sof"
-             → programs FPGA over USB-Blaster
-             → SoC boots, CPU runs my_test from ROM at 0x0100_0000
-             → results appear on UART TX / VGA
+Pop-Location
 ```
 
 ---
-
-## Memory Map
-
-
-| Address | Peripheral |
-|---|---|
-| `0x0100_0000` | Instruction ROM (4 KB) |
-| `0x0200_0000` | On-chip data RAM (8 KB) |
-| `0x1000_0000` | UART TX |
-| `0x2000_0000` | Timer |
-| `0x4000_0000` | Keyboard |
-| `0x8000_0000` | SDRAM (64 MB); lower 75 KB = VGA framebuffer (320×240 bytes, RGB332) |
-
-The same SDRAM is also visible at `0x0400_0000` from JTAG/System Console.
-
-## Important Notes
-
-### Always compile from `constraints/`
-
-```powershell
-cd constraints
-quartus_sh --flow compile de10_lite
-```
-
-Running from the repo root will fail.
-
-### Keyboard input (JTAG injection)
-
-The keyboard peripheral at `0x4000_0000` is driven by JTAG writes to magic address `0x4FFF_FF00`. No PS/2 hardware needed.
-
-### SDRAM write limitation
-
-The CPU-to-SDRAM path only supports aligned 32-bit word stores (no byte-enable).
-
-## Project Layout
-
-```text
-rtl/
-  cpu/       CPU core and instruction fetch
-  periph/    RAM, UART, timer, VGA framebuffer, SDRAM bridge/controller
-  soc/       Top-level integration, FPGA wrapper, constants
-  vendor/    Third-party SDRAM controller IP (MIT licence, inlined)
-tb/          Simulation testbench, SDRAM stub, VGA capture
-programs/
-  src/       C and assembly source files, build scripts, shared headers
-  isa-tests/ Pre-built ISA test hex files (39 tests)
-  soc-tests/ Pre-built SoC test hex files (2 tests)
-tools/       JTAG loader, boot-image helper, environment setup
-constraints/ Quartus project, pin/timing constraints
-data/        ROM bank initialization hex files
-```
 
 ## Test Suite
 
-| Category | Count | Runner |
+| Category | Count | Command |
 |---|---|---|
 | RV32UI ISA tests | 38 | `make run-all` |
-| RV32UM MUL test | 1 | `make run-all` |
-| SoC tests (RAM, SDRAM) | 2 | `make run-all` |
-| C peripheral tests (timer, UART, framebuffer) | 3 | `make run-ctests` |
+| RV32UM tests (mul/div) | 8 | `make run-all` |
+| SoC tests (RAM) | 1 | `make run-all` |
+| C peripheral tests | 6 | `make run-ctests` |
+
+---
+
+## Troubleshooting
+
+### FPGA still runs the old program
+
+ROM is baked during `quartus_map`. Always run a **full recompile** after changing the boot image:
+
+```powershell
+.\tools\select_boot_program.ps1 <program>
+Push-Location constraints; quartus_sh --flow compile de10_lite; Pop-Location
+```
+
+### Wolf3D shows only ceiling/floor (no walls)
+
+The ROM wasn't updated. Follow the full recompile steps above.
+
+### keyboard_inject.py connects but keys have no effect
+
+1. Confirm `keyboard_server.tcl` is running and shows "Listening on TCP port 2540"
+2. Stop the keyboard server before programming (`Get-Process system-console* | Stop-Process -Force`)
+3. Restart the keyboard server after programming — JTAG state resets on FPGA reconfiguration
+
+### JTAG bus contention
+
+Only one process can hold the JTAG cable. Kill `system-console` before running `quartus_pgm`.

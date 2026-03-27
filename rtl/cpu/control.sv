@@ -49,7 +49,7 @@ module control (
     output logic       memren_o,  // 1 = load from data memory
     output logic       memwren_o, // 1 = store to data memory
     output logic [1:0] wbsel_o,   // writeback source select
-    output logic [3:0] alusel_o   // ALU operation select
+    output logic [4:0] alusel_o   // ALU operation select
 );
 
     always_comb begin
@@ -70,11 +70,17 @@ module control (
                 regwren_o = 1'b1;
                 wbsel_o   = `WB_ALU;
                 if (funct7_i == `FUNCT7_M) begin
-                    // M-extension (funct7=0x01): MUL/MULH etc.
-                    // Only MUL (funct3=000) is implemented; others default to ADD.
+                    // Full RV32M: MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU
                     case (funct3_i)
-                        `F3_ADD_SUB: alusel_o = `ALU_MUL;
-                        default:     alusel_o = `ALU_ADD;
+                        3'h0: alusel_o = `ALU_MUL;
+                        3'h1: alusel_o = `ALU_MULH;
+                        3'h2: alusel_o = `ALU_MULHSU;
+                        3'h3: alusel_o = `ALU_MULHU;
+                        3'h4: alusel_o = `ALU_DIV;
+                        3'h5: alusel_o = `ALU_DIVU;
+                        3'h6: alusel_o = `ALU_REM;
+                        3'h7: alusel_o = `ALU_REMU;
+                        default: alusel_o = `ALU_ADD;
                     endcase
                 end else begin
                     // Base integer (funct7=0x00 or 0x20)

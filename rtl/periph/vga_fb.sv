@@ -1,319 +1,183 @@
-// 320x240 8bpp RGB332 framebuffer in SDRAM.
+// 320×240 8 bpp (RGB332) on-chip framebuffer with VGA scanout.
 //
-// The framebuffer lives at SDRAM word address 0 and is scanned out using two
-// on-chip line buffers. Each source line is doubled vertically and each source
-// pixel is doubled horizontally to produce a 640x480 VGA image.
+// The framebuffer lives in on-chip dual-port block RAM (76 800 bytes,
+// organised as 19 200 × 32-bit words).  Port A is the CPU read/write
+// port; port B is the VGA read-only scanout port.
+//
+// Each source pixel is doubled horizontally and vertically → 640×480.
+// VGA timing: 640×480 @ ~60 Hz, 25 MHz pixel clock.
 
 module vga_fb (
-    input  logic        clk_pixel,
+    input  logic        clk,
     input  logic        rst,
-    output logic [23:0] sdram_addr_o,
-    output logic        sdram_req_o,
-    input  logic        sdram_ack_i,
-    input  logic        sdram_valid_i,
-    input  logic [31:0] sdram_q_i,
+
+    // CPU read/write port (directly memory-mapped)
+    input  logic [16:0] fb_addr_i,      // byte address within FB (0–76799)
+    input  logic [31:0] fb_wdata_i,
+    input  logic        fb_we_i,
+    input  logic [2:0]  fb_funct3_i,    // SB/SH/SW width
+    output logic [31:0] fb_rdata_o,
+
+    // VGA output
     output logic [3:0]  vga_r,
     output logic [3:0]  vga_g,
     output logic [3:0]  vga_b,
     output logic        vga_hsync,
-    output logic        vga_vsync
+    output logic        vga_vsync,
+    output logic        blanking_o
 );
 
-    localparam int FB_WIDTH       = 320;
-    localparam int FB_HEIGHT      = 240;
-    localparam int WORDS_PER_LINE = FB_WIDTH / 4;
-    localparam int LAST_WORD      = WORDS_PER_LINE - 1;
-    localparam int LAST_ROW       = FB_HEIGHT - 1;
+    // ── Parameters ────────────────────────────────────
+    localparam int FB_W = 320, FB_H = 240;
+    localparam int WORDS_PER_LINE = FB_W / 4;          // 80
+    localparam int FB_WORDS       = FB_W * FB_H / 4;   // 19200
 
-    localparam int H_VISIBLE = 640;
-    localparam int H_FRONT   = 16;
-    localparam int H_SYNC    = 96;
-    localparam int H_BACK    = 48;
-    localparam int H_TOTAL   = H_VISIBLE + H_FRONT + H_SYNC + H_BACK;
-    localparam int V_VISIBLE = 480;
-    localparam int V_FRONT   = 10;
-    localparam int V_SYNC    = 2;
-    localparam int V_BACK    = 33;
-    localparam int V_TOTAL   = V_VISIBLE + V_FRONT + V_SYNC + V_BACK;
-    localparam int DEBUG_MODE_NORMAL      = 0;
-    localparam int DEBUG_MODE_COLOR_BARS  = 1;
-    localparam int DEBUG_MODE_REPEAT_ROW0 = 2;
-    localparam int DEBUG_MODE = DEBUG_MODE_NORMAL;
-    localparam logic [7:0] DEBUG_REPEAT_ROW = 8'd120;
+    // 640×480 @ 60 Hz  (25.175 MHz ≈ 25 MHz pixel clock)
+    localparam int H_VIS = 640, H_FP = 16, H_SYNC = 96, H_BP = 48;
+    localparam int H_TOT = H_VIS + H_FP + H_SYNC + H_BP;   // 800
+    localparam int V_VIS = 480, V_FP = 10, V_SYNC = 2,  V_BP = 33;
+    localparam int V_TOT = V_VIS + V_FP + V_SYNC + V_BP;    // 525
 
-    localparam logic [1:0] FETCH_IDLE      = 2'd0;
-    localparam logic [1:0] FETCH_WAIT_ACK  = 2'd1;
-    localparam logic [1:0] FETCH_WAIT_DATA = 2'd2;
+    // ── Dual-port framebuffer RAM ─────────────────────
+    (* ramstyle = "no_rw_check" *) logic [7:0] fb_b0 [0:FB_WORDS-1];
+    (* ramstyle = "no_rw_check" *) logic [7:0] fb_b1 [0:FB_WORDS-1];
+    (* ramstyle = "no_rw_check" *) logic [7:0] fb_b2 [0:FB_WORDS-1];
+    (* ramstyle = "no_rw_check" *) logic [7:0] fb_b3 [0:FB_WORDS-1];
 
-    function automatic [7:0] next_row(input [7:0] row);
-        begin
-            if (row == LAST_ROW[7:0])
-                next_row = 8'd0;
-            else
-                next_row = row + 8'd1;
+    // ── Port A: CPU access ────────────────────────────
+    logic [14:0] cpu_word_addr;
+    assign cpu_word_addr = fb_addr_i[16:2];
+
+    // Byte enables (same pattern as ram.sv)
+    logic [3:0] be;
+    logic [1:0] boff;
+    assign boff = fb_addr_i[1:0];
+
+    always_comb begin
+        be = 4'b0000;
+        case (fb_funct3_i[1:0])
+            2'b00:   be[boff] = 1'b1;                                // SB
+            2'b01:   be = boff[1] ? 4'b1100 : 4'b0011;              // SH
+            default: be = 4'b1111;                                    // SW
+        endcase
+    end
+
+    // Write-data byte routing
+    logic [7:0] wd0, wd1, wd2, wd3;
+    always_comb begin
+        wd0 = fb_wdata_i[ 7: 0];
+        wd1 = fb_wdata_i[15: 8];
+        wd2 = fb_wdata_i[23:16];
+        wd3 = fb_wdata_i[31:24];
+        case (fb_funct3_i[1:0])
+            2'b00: begin   // SB — replicate byte to all lanes
+                wd0 = fb_wdata_i[7:0]; wd1 = fb_wdata_i[7:0];
+                wd2 = fb_wdata_i[7:0]; wd3 = fb_wdata_i[7:0];
+            end
+            2'b01: begin   // SH — replicate halfword
+                wd0 = fb_wdata_i[7:0]; wd1 = fb_wdata_i[15:8];
+                wd2 = fb_wdata_i[7:0]; wd3 = fb_wdata_i[15:8];
+            end
+            default: ;     // SW — use as-is
+        endcase
+    end
+
+    // CPU writes (Port A)
+    always_ff @(posedge clk) begin
+        if (fb_we_i) begin
+            if (be[0]) fb_b0[cpu_word_addr] <= wd0;
+            if (be[1]) fb_b1[cpu_word_addr] <= wd1;
+            if (be[2]) fb_b2[cpu_word_addr] <= wd2;
+            if (be[3]) fb_b3[cpu_word_addr] <= wd3;
         end
-    endfunction
+    end
 
-    function automatic [23:0] line_base_addr(input [7:0] row);
-        reg [23:0] row_64;
-        reg [23:0] row_16;
-        begin
-            row_64 = {row, 6'b0};
-            row_16 = {row, 4'b0};
-            line_base_addr = row_64 + row_16;
-        end
-    endfunction
+    // CPU reads (Port A, synchronous)
+    always_ff @(posedge clk)
+        fb_rdata_o <= {fb_b3[cpu_word_addr], fb_b2[cpu_word_addr],
+                       fb_b1[cpu_word_addr], fb_b0[cpu_word_addr]};
 
-    // Keep the scanline buffers in logic instead of inferred RAM blocks.
-    // Quartus was adding pass-through logic for read-during-write behavior,
-    // which lines up with the short 2-4 pixel artifacts seen on screen.
-    (* ramstyle = "logic" *) logic [31:0] line_buf0 [0:WORDS_PER_LINE-1];
-    (* ramstyle = "logic" *) logic [31:0] line_buf1 [0:WORDS_PER_LINE-1];
+    // ── VGA timing counters ───────────────────────────
+    logic [9:0] h_count, v_count;
 
-    logic        buf_valid0;
-    logic        buf_valid1;
-    logic [7:0]  buf_row0;
-    logic [7:0]  buf_row1;
-
-    logic        current_buf_sel;
-    logic [7:0]  current_row;
-    logic        current_ready;
-    logic        next_ready;
-
-    logic [9:0]  h_count;
-    logic [9:0]  v_count;
-    logic        active;
-    logic [8:0]  src_x;
-    logic [7:0]  src_y;
-    logic [6:0]  src_word_idx;
-    logic [1:0]  src_byte_idx;
-    logic [31:0] current_word;
-    logic [7:0]  pixel_r;
-    logic [2:0]  red3;
-    logic [2:0]  green3;
-    logic [1:0]  blue2;
-    logic [3:0]  vga_r_next;
-    logic [3:0]  vga_g_next;
-    logic [3:0]  vga_b_next;
-    logic        vga_hsync_next;
-    logic        vga_vsync_next;
-
-    logic [1:0]  fetch_state;
-    logic        fetch_buf_sel;
-    logic [7:0]  fetch_row;
-    logic [6:0]  fetch_word_idx;
-
-    logic        swap_now;
-    logic [7:0]  desired_row;
-    logic        need_current_fetch;
-    logic        need_next_fetch;
-    logic        current_ready_sel0;
-    logic        current_ready_sel1;
-    logic        next_ready_sel0;
-    logic        next_ready_sel1;
-
-    assign active    = (h_count < H_VISIBLE) && (v_count < V_VISIBLE);
-    assign src_x     = h_count[9:1];
-    assign src_y     = v_count[8:1];
-    assign desired_row = (DEBUG_MODE == DEBUG_MODE_REPEAT_ROW0) ? DEBUG_REPEAT_ROW : v_count[8:1];
-    assign src_word_idx = src_x[8:2];
-    assign src_byte_idx = src_x[1:0];
-
-    assign current_ready_sel0 = (current_buf_sel == 1'b0) && buf_valid0 && (buf_row0 == current_row);
-    assign current_ready_sel1 = (current_buf_sel == 1'b1) && buf_valid1 && (buf_row1 == current_row);
-    assign next_ready_sel0    = (current_buf_sel == 1'b1) && buf_valid0 && (buf_row0 == next_row(current_row));
-    assign next_ready_sel1    = (current_buf_sel == 1'b0) && buf_valid1 && (buf_row1 == next_row(current_row));
-
-    assign current_ready = current_ready_sel0 || current_ready_sel1;
-    assign next_ready    = next_ready_sel0 || next_ready_sel1;
-
-    assign swap_now = (DEBUG_MODE == DEBUG_MODE_NORMAL) &&
-                      (h_count == 10'd0) &&
-                      (v_count < V_VISIBLE) &&
-                      (desired_row != current_row);
-    assign need_current_fetch = !current_ready;
-    assign need_next_fetch    = (DEBUG_MODE == DEBUG_MODE_NORMAL) && !next_ready;
-
-    always_ff @(posedge clk_pixel) begin
+    always_ff @(posedge clk) begin
         if (rst) begin
             h_count <= 10'd0;
             v_count <= 10'd0;
         end else begin
-            if (h_count == H_TOTAL - 1) begin
+            if (h_count == H_TOT - 1) begin
                 h_count <= 10'd0;
-                if (v_count == V_TOTAL - 1)
-                    v_count <= 10'd0;
-                else
-                    v_count <= v_count + 10'd1;
-            end else begin
+                v_count <= (v_count == V_TOT - 1) ? 10'd0 : v_count + 10'd1;
+            end else
                 h_count <= h_count + 10'd1;
-            end
         end
     end
 
-    assign vga_hsync_next = ~(h_count >= H_VISIBLE + H_FRONT &&
-                              h_count <  H_VISIBLE + H_FRONT + H_SYNC);
-    assign vga_vsync_next = ~(v_count >= V_VISIBLE + V_FRONT &&
-                              v_count <  V_VISIBLE + V_FRONT + V_SYNC);
+    // ── Sync and blanking ─────────────────────────────
+    wire active     = (h_count < H_VIS) && (v_count < V_VIS);
+    wire hsync_next = ~(h_count >= H_VIS + H_FP &&
+                        h_count <  H_VIS + H_FP + H_SYNC);
+    wire vsync_next = ~(v_count >= V_VIS + V_FP &&
+                        v_count <  V_VIS + V_FP + V_SYNC);
 
-    always_ff @(posedge clk_pixel) begin
-        if (rst) begin
-            buf_valid0      <= 1'b0;
-            buf_valid1      <= 1'b0;
-            buf_row0        <= 8'd0;
-            buf_row1        <= 8'd0;
-            current_buf_sel <= 1'b0;
-            current_row     <= DEBUG_REPEAT_ROW;
-            fetch_state     <= FETCH_IDLE;
-            fetch_buf_sel   <= 1'b0;
-            fetch_row       <= 8'd0;
-            fetch_word_idx  <= 7'd0;
-            sdram_req_o     <= 1'b0;
-            sdram_addr_o    <= 24'd0;
-        end else begin
-            if (swap_now) begin
-                if ((current_buf_sel == 1'b0) && buf_valid1 && (buf_row1 == desired_row)) begin
-                    current_buf_sel <= 1'b1;
-                    current_row     <= desired_row;
-                    buf_valid0      <= 1'b0;
-                end else if ((current_buf_sel == 1'b1) && buf_valid0 && (buf_row0 == desired_row)) begin
-                    current_buf_sel <= 1'b0;
-                    current_row     <= desired_row;
-                    buf_valid1      <= 1'b0;
-                end
-            end
+    assign blanking_o = ~active;
 
-            case (fetch_state)
-                FETCH_IDLE: begin
-                    sdram_req_o <= 1'b0;
+    // ── Port B: VGA scanout ───────────────────────────
+    // Source pixel from 2× scaled coordinates
+    wire [8:0] src_x = h_count[9:1];   // 0–319
+    wire [7:0] src_y = v_count[9:1];   // 0–239
 
-                    if (DEBUG_MODE == DEBUG_MODE_COLOR_BARS) begin
-                        fetch_state <= FETCH_IDLE;
-                    end else if (need_current_fetch) begin
-                        fetch_buf_sel  <= current_buf_sel;
-                        fetch_row      <= current_row;
-                        fetch_word_idx <= 7'd0;
-                        sdram_addr_o   <= line_base_addr(current_row);
-                        sdram_req_o    <= 1'b1;
-                        fetch_state    <= FETCH_WAIT_ACK;
-                    end else if (need_next_fetch) begin
-                        fetch_buf_sel  <= ~current_buf_sel;
-                        fetch_row      <= next_row(current_row);
-                        fetch_word_idx <= 7'd0;
-                        sdram_addr_o   <= line_base_addr(next_row(current_row));
-                        sdram_req_o    <= 1'b1;
-                        fetch_state    <= FETCH_WAIT_ACK;
-                    end
-                end
+    // Framebuffer read address: src_y * 80 + src_x[8:2]
+    //   src_y * 80 = (src_y << 6) + (src_y << 4)
+    wire [14:0] line_base = {1'b0, src_y, 6'b0} + {3'b0, src_y, 4'b0};
+    wire [14:0] vga_word_addr = line_base + {8'b0, src_x[8:2]};
 
-                FETCH_WAIT_ACK: begin
-                    if (sdram_ack_i) begin
-                        sdram_req_o  <= 1'b0;
-                        fetch_state  <= FETCH_WAIT_DATA;
-                    end
-                end
+    // Synchronous read (Port B) — one clock latency
+    logic [31:0] vga_word;
+    always_ff @(posedge clk)
+        vga_word <= {fb_b3[vga_word_addr], fb_b2[vga_word_addr],
+                     fb_b1[vga_word_addr], fb_b0[vga_word_addr]};
 
-                FETCH_WAIT_DATA: begin
-                    if (sdram_valid_i) begin
-                        if (fetch_buf_sel == 1'b0)
-                            line_buf0[fetch_word_idx] <= sdram_q_i;
-                        else
-                            line_buf1[fetch_word_idx] <= sdram_q_i;
-
-                        if (fetch_word_idx == LAST_WORD[6:0]) begin
-                            if (fetch_buf_sel == 1'b0) begin
-                                buf_valid0 <= 1'b1;
-                                buf_row0   <= fetch_row;
-                            end else begin
-                                buf_valid1 <= 1'b1;
-                                buf_row1   <= fetch_row;
-                            end
-                            fetch_state <= FETCH_IDLE;
-                        end else begin
-                            fetch_word_idx <= fetch_word_idx + 7'd1;
-                            sdram_addr_o   <= line_base_addr(fetch_row) + fetch_word_idx + 24'd1;
-                            sdram_req_o    <= 1'b1;
-                            fetch_state    <= FETCH_WAIT_ACK;
-                        end
-                    end
-                end
-
-                default: begin
-                    fetch_state <= FETCH_IDLE;
-                end
-            endcase
-        end
+    // Delay byte select to match RAM read latency
+    logic [1:0] byte_sel_q;
+    logic       active_q;
+    always_ff @(posedge clk) begin
+        byte_sel_q <= src_x[1:0];
+        active_q   <= active;
     end
 
+    // Extract pixel byte from word
+    logic [7:0] pixel;
     always_comb begin
-        if (current_buf_sel == 1'b0)
-            current_word = line_buf0[src_word_idx];
-        else
-            current_word = line_buf1[src_word_idx];
-
-        case (src_byte_idx)
-            2'd0: pixel_r = current_word[7:0];
-            2'd1: pixel_r = current_word[15:8];
-            2'd2: pixel_r = current_word[23:16];
-            default: pixel_r = current_word[31:24];
+        case (byte_sel_q)
+            2'd0:    pixel = vga_word[ 7: 0];
+            2'd1:    pixel = vga_word[15: 8];
+            2'd2:    pixel = vga_word[23:16];
+            default: pixel = vga_word[31:24];
         endcase
-
-        red3   = pixel_r[7:5];
-        green3 = pixel_r[4:2];
-        blue2  = pixel_r[1:0];
-
-        if (DEBUG_MODE == DEBUG_MODE_COLOR_BARS) begin
-            if (active) begin
-                case (src_x[8:6])
-                    3'd0: begin vga_r_next = 4'hF; vga_g_next = 4'h0; vga_b_next = 4'h0; end
-                    3'd1: begin vga_r_next = 4'hF; vga_g_next = 4'h8; vga_b_next = 4'h0; end
-                    3'd2: begin vga_r_next = 4'hF; vga_g_next = 4'hF; vga_b_next = 4'h0; end
-                    3'd3: begin vga_r_next = 4'h0; vga_g_next = 4'hF; vga_b_next = 4'h0; end
-                    3'd4: begin vga_r_next = 4'h0; vga_g_next = 4'hF; vga_b_next = 4'hF; end
-                    3'd5: begin vga_r_next = 4'h0; vga_g_next = 4'h0; vga_b_next = 4'hF; end
-                    3'd6: begin vga_r_next = 4'h8; vga_g_next = 4'h0; vga_b_next = 4'hF; end
-                    default: begin vga_r_next = 4'hF; vga_g_next = 4'hF; vga_b_next = 4'hF; end
-                endcase
-
-                if (src_y < 8 || src_y >= (FB_HEIGHT - 8) || src_x < 8 || src_x >= (FB_WIDTH - 8)) begin
-                    vga_r_next = 4'hF;
-                    vga_g_next = 4'hF;
-                    vga_b_next = 4'hF;
-                end
-            end else begin
-                vga_r_next = 4'h0;
-                vga_g_next = 4'h0;
-                vga_b_next = 4'h0;
-            end
-        end else if ((DEBUG_MODE == DEBUG_MODE_REPEAT_ROW0) && active && current_ready) begin
-            vga_r_next = {red3, red3[2]};
-            vga_g_next = {green3, green3[2]};
-            vga_b_next = {blue2, blue2};
-        end else if (active && current_ready) begin
-            vga_r_next = {red3, red3[2]};
-            vga_g_next = {green3, green3[2]};
-            vga_b_next = {blue2, blue2};
-        end else begin
-            vga_r_next = 4'h0;
-            vga_g_next = 4'h0;
-            vga_b_next = 4'h0;
-        end
     end
 
-    always_ff @(posedge clk_pixel) begin
+    // ── Registered VGA outputs (RGB332 → RGB444) ─────
+    always_ff @(posedge clk) begin
         if (rst) begin
-            vga_r     <= 4'h0;
-            vga_g     <= 4'h0;
-            vga_b     <= 4'h0;
+            vga_r     <= 4'd0;
+            vga_g     <= 4'd0;
+            vga_b     <= 4'd0;
             vga_hsync <= 1'b1;
             vga_vsync <= 1'b1;
         end else begin
-            vga_r     <= vga_r_next;
-            vga_g     <= vga_g_next;
-            vga_b     <= vga_b_next;
-            vga_hsync <= vga_hsync_next;
-            vga_vsync <= vga_vsync_next;
+            vga_hsync <= hsync_next;
+            vga_vsync <= vsync_next;
+            if (active_q) begin
+                vga_r <= {pixel[7:5], pixel[7]};
+                vga_g <= {pixel[4:2], pixel[4]};
+                vga_b <= {pixel[1:0], pixel[1:0]};
+            end else begin
+                vga_r <= 4'd0;
+                vga_g <= 4'd0;
+                vga_b <= 4'd0;
+            end
         end
     end
 
-endmodule
+endmodule : vga_fb

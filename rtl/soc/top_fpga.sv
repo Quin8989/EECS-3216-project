@@ -1,9 +1,11 @@
 // FPGA top-level wrapper for Intel DE10-Lite (10M50DAF484C7G)
 //
-// Maps DE10-Lite board pins to the headless SoC top module.
+// Maps board pins to the SoC.  SDRAM is unused — pins driven to safe
+// idle values so the physical chip doesn't draw spurious current.
+//
 //   - 50 MHz board oscillator → 25 MHz system clock (divide-by-2)
 //   - KEY[0] (active-low) → synchronised reset
-//   - LEDR[9:0] accent LEDs (active-high) for debug
+//   - LEDR[0] heartbeat, LEDR[1] reset indicator
 //   - GPIO[0] = UART TX
 
 module top_fpga (
@@ -27,6 +29,7 @@ module top_fpga (
     output logic [0:0]  GPIO,  // GPIO[0] = UART TX
 
     // ── SDRAM (directly to IS42S16320D on DE10-Lite) ──
+    // Not used — pins driven to safe idle values.
     output logic [12:0] DRAM_ADDR,
     output logic [1:0]  DRAM_BA,
     inout  wire  [15:0] DRAM_DQ,
@@ -40,66 +43,33 @@ module top_fpga (
     output logic        DRAM_LDQM
 );
 
-    // ── Reset synchroniser (2-FF, active-high) ────
-    logic rst_raw;
-    assign rst_raw = ~KEY[0];           // KEY[0] pressed → reset
-
     // ── 25 MHz system clock (divide-by-2 from 50 MHz) ────
-    // Free-running divider — no reset, avoids runt clock pulses.
-    // MAX 10 initialises registers to 0 after configuration.
     logic clk_25m = 1'b0;
     always_ff @(posedge MAX10_CLK1_50)
         clk_25m <= ~clk_25m;
 
     // ── Reset synchroniser (2-FF on 25 MHz domain) ────
     logic [1:0] rst_sync;
-    always_ff @(posedge clk_25m) begin
-        rst_sync <= {rst_sync[0], rst_raw};
-    end
+    always_ff @(posedge clk_25m)
+        rst_sync <= {rst_sync[0], ~KEY[0]};
 
     logic reset;
-    assign reset = rst_sync[1];
+    logic jtag_soft_reset;
+    assign reset = rst_sync[1] | jtag_soft_reset;
 
-    // ── SoC ───────────────────────────────────────
-    logic uart_tx_w;
+    // ── SoC signals ───────────────────────────────
+    logic        uart_tx_w;
     logic [31:0] dbg_pc;
-    logic        dbg_vga_wr;
 
-    // ── SDRAM bus signals (from SoC/CPU) ──────────
-    logic [23:0] cpu_sdram_addr;
-    logic [31:0] cpu_sdram_wdata, sdram_q;
-    logic        cpu_sdram_we, cpu_sdram_req, cpu_sdram_ack, sdram_valid;
-    logic [23:0] vga_sdram_addr;
-    logic        vga_sdram_req, vga_sdram_ack, vga_sdram_valid;
-    logic        cpu_sdram_valid;
-
-    // ── JTAG master (Intel IP) signals ──────────────
-    logic [31:0] jtag_master_addr;
-    logic [31:0] jtag_master_rdata;
-    logic [31:0] jtag_master_wdata;
-    logic        jtag_master_read;
-    logic        jtag_master_write;
-    logic        jtag_master_waitrequest;
-    logic        jtag_master_readdatavalid;
+    // ── JTAG master ──────────────────────────────────
+    logic [31:0] jtag_master_addr, jtag_master_rdata, jtag_master_wdata;
+    logic        jtag_master_read, jtag_master_write;
+    logic        jtag_master_waitrequest, jtag_master_readdatavalid;
     logic [3:0]  jtag_master_byteenable;
 
-    // ── Arbitrated SDRAM bus ──────────────────────
-    logic [23:0] sdram_addr;
-    logic [31:0] sdram_wdata;
-    logic        sdram_we, sdram_req, sdram_ack;
-    typedef enum logic [1:0] {RESP_NONE, RESP_CPU, RESP_VGA, RESP_JTAG} resp_t;
-    resp_t read_resp_target;
-    logic grant_cpu, grant_vga, grant_jtag, grant_jtag_sdram;
-
-    localparam logic [31:0] JTAG_KBD_INJECT_ADDR = 32'h4FFF_FF00;
-    logic       jtag_kbd_inject_hit;
-    logic       jtag_kbd_valid;
-    logic [7:0] jtag_kbd_code;
-
-    // Intel JTAG-to-Avalon Master IP
     jtag_master u_jtag_master (
         .clk_clk              (clk_25m),
-        .reset_reset_n        (~reset),
+        .reset_reset_n        (~rst_sync[1]),
         .master_address       (jtag_master_addr),
         .master_readdata      (jtag_master_rdata),
         .master_read          (jtag_master_read),
@@ -110,159 +80,80 @@ module top_fpga (
         .master_byteenable    (jtag_master_byteenable)
     );
 
-    // ── SDRAM Arbitration ─────────────────────────
-    // Priority: JTAG > CPU > VGA. Only one read response may be outstanding.
-    // A reserved JTAG write address injects keyboard scan codes directly.
-    assign jtag_kbd_inject_hit = (read_resp_target == RESP_NONE)
-                              && jtag_master_write
-                              && (jtag_master_addr == JTAG_KBD_INJECT_ADDR);
-    assign grant_jtag_sdram = (read_resp_target == RESP_NONE)
-                           && (jtag_master_read | jtag_master_write)
-                           && !jtag_kbd_inject_hit;
-    assign grant_jtag = grant_jtag_sdram | jtag_kbd_inject_hit;
-    assign grant_cpu  = (read_resp_target == RESP_NONE) && !grant_jtag && cpu_sdram_req;
-    assign grant_vga  = (read_resp_target == RESP_NONE) && !grant_jtag && !grant_cpu && vga_sdram_req;
+    // ── JTAG special-address intercept ───────────────
+    // Only keyboard injection and soft-reset are supported.
+    // All other JTAG accesses complete immediately as no-ops.
+    localparam logic [31:0] JTAG_KBD_ADDR       = 32'h4FFF_FF00;
+    localparam logic [31:0] JTAG_SOFT_RESET_ADDR = 32'h4FFF_FF10;
 
-    assign cpu_sdram_ack = grant_cpu & sdram_ack;
-    assign vga_sdram_ack = grant_vga & sdram_ack;
-    assign jtag_master_waitrequest = (jtag_master_read | jtag_master_write)
-                                  && !((grant_jtag_sdram && sdram_ack) || jtag_kbd_inject_hit);
-    assign jtag_master_readdatavalid = sdram_valid & (read_resp_target == RESP_JTAG);
-    assign jtag_master_rdata = sdram_q;
-    assign cpu_sdram_valid = sdram_valid & (read_resp_target == RESP_CPU);
-    assign vga_sdram_valid = sdram_valid & (read_resp_target == RESP_VGA);
+    wire jtag_kbd_hit   = jtag_master_write && (jtag_master_addr == JTAG_KBD_ADDR);
+    wire jtag_reset_hit = jtag_master_write && (jtag_master_addr == JTAG_SOFT_RESET_ADDR);
+
+    logic       jtag_kbd_valid;
+    logic [7:0] jtag_kbd_code;
 
     always_ff @(posedge clk_25m) begin
-        if (reset) begin
-            jtag_kbd_valid <= 1'b0;
-            jtag_kbd_code  <= 8'h00;
+        if (rst_sync[1]) begin
+            jtag_kbd_valid  <= 1'b0;
+            jtag_kbd_code   <= 8'h00;
+            jtag_soft_reset <= 1'b0;
         end else begin
             jtag_kbd_valid <= 1'b0;
-            if (jtag_kbd_inject_hit) begin
+            if (jtag_kbd_hit) begin
                 jtag_kbd_valid <= 1'b1;
                 jtag_kbd_code  <= jtag_master_wdata[7:0];
             end
+            if (jtag_reset_hit)
+                jtag_soft_reset <= jtag_master_wdata[0];
         end
     end
 
-    always_comb begin
-        sdram_addr  = 24'd0;
-        sdram_wdata = 32'd0;
-        sdram_we    = 1'b0;
-        sdram_req   = 1'b0;
+    // Complete every JTAG transaction in one cycle (no wait)
+    assign jtag_master_waitrequest   = 1'b0;
+    assign jtag_master_readdatavalid = jtag_master_read;
+    assign jtag_master_rdata         = 32'd0;
 
-        if (grant_jtag_sdram) begin
-            sdram_addr  = jtag_master_addr[25:2];
-            sdram_wdata = jtag_master_wdata;
-            sdram_we    = jtag_master_write;
-            sdram_req   = 1'b1;
-        end else if (grant_cpu) begin
-            sdram_addr  = cpu_sdram_addr;
-            sdram_wdata = cpu_sdram_wdata;
-            sdram_we    = cpu_sdram_we;
-            sdram_req   = cpu_sdram_req;
-        end else if (grant_vga) begin
-            sdram_addr  = vga_sdram_addr;
-            sdram_wdata = 32'd0;
-            sdram_we    = 1'b0;
-            sdram_req   = vga_sdram_req;
-        end
-    end
-
-    always_ff @(posedge clk_25m) begin
-        if (reset) begin
-            read_resp_target <= RESP_NONE;
-        end else begin
-            if (read_resp_target == RESP_NONE) begin
-                if (grant_jtag_sdram && sdram_ack && !jtag_master_write)
-                    read_resp_target <= RESP_JTAG;
-                else if (grant_cpu && sdram_ack && !cpu_sdram_we)
-                    read_resp_target <= RESP_CPU;
-                else if (grant_vga && sdram_ack)
-                    read_resp_target <= RESP_VGA;
-            end else if (sdram_valid) begin
-                read_resp_target <= RESP_NONE;
-            end
-        end
-    end
-
+    // ── SoC instantiation ─────────────────────────────
     top u_soc (
-        .clk          (clk_25m),
-        .reset        (reset),
-        .vga_r        (VGA_R),
-        .vga_g        (VGA_G),
-        .vga_b        (VGA_B),
-        .vga_hsync    (VGA_HS),
-        .vga_vsync    (VGA_VS),
-        .uart_tx_o    (uart_tx_w),
-        .uart_rx_i    (1'b1),
-        .jtag_kbd_valid_i(jtag_kbd_valid),
-        .jtag_kbd_code_i (jtag_kbd_code),
-        .sdram_addr_o (cpu_sdram_addr),
-        .sdram_wdata_o(cpu_sdram_wdata),
-        .sdram_we_o   (cpu_sdram_we),
-        .sdram_req_o  (cpu_sdram_req),
-        .sdram_ack_i  (cpu_sdram_ack),
-        .sdram_valid_i(cpu_sdram_valid),
-        .vga_sdram_addr_o(vga_sdram_addr),
-        .vga_sdram_req_o (vga_sdram_req),
-        .vga_sdram_ack_i (vga_sdram_ack),
-        .vga_sdram_valid_i(vga_sdram_valid),
-        .sdram_q_i     (sdram_q),
-        .vga_sdram_q_i (sdram_q),
-        .dbg_pc_o     (dbg_pc),
-        .dbg_vga_wr_o (dbg_vga_wr)
+        .clk              (clk_25m),
+        .reset            (reset),
+        .vga_r            (VGA_R),
+        .vga_g            (VGA_G),
+        .vga_b            (VGA_B),
+        .vga_hsync        (VGA_HS),
+        .vga_vsync        (VGA_VS),
+        .vga_blanking_o   (),
+        .uart_tx_o        (uart_tx_w),
+        .uart_rx_i        (1'b1),
+        .jtag_kbd_valid_i (jtag_kbd_valid),
+        .jtag_kbd_code_i  (jtag_kbd_code),
+        .dbg_pc_o         (dbg_pc)
     );
 
-    // ── Debug LEDs ────────────────────────────────
-    // LEDR[0]: heartbeat (≈ 0.75 Hz from MSB of a counter at 25 MHz)
+    // ── Debug LEDs ────────────────────────────────────
     logic [24:0] hb_cnt;
-    always_ff @(posedge clk_25m) begin
+    always_ff @(posedge clk_25m)
         if (reset) hb_cnt <= '0;
         else       hb_cnt <= hb_cnt + 25'd1;
-    end
-    assign LEDR[0] = hb_cnt[24];
 
-    // LEDR[1]: reset active indicator
-    assign LEDR[1] = reset;
+    assign LEDR[0]   = hb_cnt[24];   // Heartbeat (~0.75 Hz)
+    assign LEDR[1]   = reset;
+    assign LEDR[9:2] = '0;
 
-    // LEDR[2]: VGA write ever occurred
-    assign LEDR[2] = dbg_vga_wr;
-
-    // LEDR[3]: PC has left reset address (CPU is running)
-    assign LEDR[3] = (dbg_pc != 32'h0100_0000);
-
-    // LEDR[9:4]: PC bits [7:2] (instruction offset, changes as CPU executes)
-    assign LEDR[9:4] = dbg_pc[7:2];
-
-    // ── GPIO: UART TX ────────────────────────────
+    // ── GPIO: UART TX ────────────────────────────────
     assign GPIO[0] = uart_tx_w;
 
-    // ── SDRAM controller & clock ──────────────────
-    // The SDRAM core expects the external DRAM clock to be the inverted phase
-    // of the internal 25 MHz controller clock.
-    assign DRAM_CLK = ~clk_25m;
-
-    sdram_ctrl u_sdram_ctrl (
-        .reset      (reset),
-        .clk        (clk_25m),
-        .addr       (sdram_addr),
-        .data       (sdram_wdata),
-        .we         (sdram_we),
-        .req        (sdram_req),
-        .ack        (sdram_ack),
-        .valid      (sdram_valid),
-        .q          (sdram_q),
-        .sdram_a    (DRAM_ADDR),
-        .sdram_ba   (DRAM_BA),
-        .sdram_dq   (DRAM_DQ),
-        .sdram_cke  (DRAM_CKE),
-        .sdram_cs_n (DRAM_CS_N),
-        .sdram_ras_n(DRAM_RAS_N),
-        .sdram_cas_n(DRAM_CAS_N),
-        .sdram_we_n (DRAM_WE_N),
-        .sdram_dqml (DRAM_LDQM),
-        .sdram_dqmh (DRAM_UDQM)
-    );
+    // ── SDRAM pins — idle / safe values ──────────────
+    assign DRAM_CLK   = 1'b0;
+    assign DRAM_CKE   = 1'b0;
+    assign DRAM_CS_N  = 1'b1;   // deselected
+    assign DRAM_RAS_N = 1'b1;
+    assign DRAM_CAS_N = 1'b1;
+    assign DRAM_WE_N  = 1'b1;
+    assign DRAM_ADDR  = 13'd0;
+    assign DRAM_BA    = 2'd0;
+    assign DRAM_UDQM  = 1'b1;
+    assign DRAM_LDQM  = 1'b1;
+    assign DRAM_DQ    = 16'bz;  // tri-state
 
 endmodule : top_fpga

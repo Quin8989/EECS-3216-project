@@ -4,7 +4,7 @@ module fetch #(
     parameter int DWIDTH    = 32,
     parameter int AWIDTH    = 32,
     parameter int BASE_ADDR = 32'h0100_0000,
-    parameter int DEPTH     = 1024
+    parameter int DEPTH     = 16384
 )(
     input  logic              clk,
     input  logic              rst,
@@ -54,11 +54,18 @@ module fetch #(
     initial $readmemh("../data/rom_bank2.hex", bank2);
     initial $readmemh("../data/rom_bank3.hex", bank3);
 `else
-    // Simulation: read 32-bit hex file and split into byte lanes
+    // Simulation: read 32-bit hex file and split into byte lanes.
+    // Program path is supplied at runtime via +MEM_PATH=<file> plusarg
+    // so the Verilator binary only needs to be compiled once.
     integer i;
     logic [31:0] imem_init [0:DEPTH-1];
     initial begin
-        $readmemh(`MEM_PATH, imem_init);
+        string mem_path;
+        if (!$value$plusargs("MEM_PATH=%s", mem_path)) begin
+            $display("ERROR: +MEM_PATH=<file> plusarg required");
+            $finish;
+        end
+        $readmemh(mem_path, imem_init);
         for (i = 0; i < DEPTH; i = i + 1) begin
             bank0[i] = imem_init[i][ 7: 0];
             bank1[i] = imem_init[i][15: 8];

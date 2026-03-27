@@ -11,7 +11,7 @@
 // Inputs:
 //   wbsel_i    — from control.sv; selects which source to commit
 //   alu_res_i  — from alu.sv; ALU computation result
-//   dmem_rdata_i — from data bus (mem_map.sv); load instruction result
+//   dmem_rdata_i — from data bus (top.sv memory map); load instruction result
 //   pc_i       — from fetch.sv; current instruction's PC
 //
 // Output:
@@ -24,7 +24,7 @@
 //   latched into the register file.
 //
 // Connected to:
-//   upstream  : alu.sv (alu_res_i), mem_map.sv (dmem_rdata_i),
+//   upstream  : alu.sv (alu_res_i), top.sv (dmem_rdata_i),
 //               fetch.sv (pc_i)
 //   downstream: register_file.sv (wb_data_i / wen_i)
 // ============================================================

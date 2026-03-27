@@ -1,0 +1,16 @@
+soc/constants.svh
+cpu/fetch.sv
+cpu/decode.sv
+cpu/imm_gen.sv
+cpu/control.sv
+cpu/register_file.sv
+cpu/alu.sv
+cpu/branch_control.sv
+cpu/writeback.sv
+periph/ram.sv
+periph/keyboard.sv
+periph/uart.sv
+periph/timer.sv
+periph/vga_fb.sv
+cpu/cpu.sv
+soc/top.sv

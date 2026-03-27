@@ -43,18 +43,25 @@
 `define F3_BYTEU    3'b100
 `define F3_HALFU    3'b101
 
-// ALU select
-`define ALU_ADD     4'h0
-`define ALU_SUB     4'h1
-`define ALU_AND     4'h2
-`define ALU_OR      4'h3
-`define ALU_XOR     4'h4
-`define ALU_SLL     4'h5
-`define ALU_SRL     4'h6
-`define ALU_SRA     4'h7
-`define ALU_SLT     4'h8
-`define ALU_SLTU    4'h9
-`define ALU_MUL     4'hA
+// ALU select (5-bit to accommodate full RV32M)
+`define ALU_ADD     5'h00
+`define ALU_SUB     5'h01
+`define ALU_AND     5'h02
+`define ALU_OR      5'h03
+`define ALU_XOR     5'h04
+`define ALU_SLL     5'h05
+`define ALU_SRL     5'h06
+`define ALU_SRA     5'h07
+`define ALU_SLT     5'h08
+`define ALU_SLTU    5'h09
+`define ALU_MUL     5'h0A
+`define ALU_MULH    5'h0B
+`define ALU_MULHSU  5'h0C
+`define ALU_MULHU   5'h0D
+`define ALU_DIV     5'h0E
+`define ALU_DIVU    5'h0F
+`define ALU_REM     5'h10
+`define ALU_REMU    5'h11
 
 // Writeback select
 `define WB_OFF      2'b00

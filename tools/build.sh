@@ -19,8 +19,11 @@ CC=riscv64-unknown-elf-gcc
 OBJCOPY=riscv64-unknown-elf-objcopy
 OBJDUMP=riscv64-unknown-elf-objdump
 
-CFLAGS="-march=rv32i_zmmul -mabi=ilp32 -Os -Wall -ffreestanding -nostdlib -nostartfiles"
+CFLAGS="-march=rv32im -mabi=ilp32 -Os -Wall -ffreestanding -nostdlib -nostartfiles"
 LDFLAGS="-T ${SRCDIR}/link.ld -Wl,--gc-sections"
+
+# Extra CFLAGS from environment (e.g. EXTRA_CFLAGS="-DSIM_MODE")
+CFLAGS="${CFLAGS} ${EXTRA_CFLAGS:-}"
 
 OUTDIR="${OUTDIR_BASE}"
 
@@ -35,6 +38,7 @@ fi
 ${CC} ${CFLAGS} ${LDFLAGS} \
     ${SRCDIR}/crt0.s \
     ${SRCDIR}/${PROG}.c \
+    -lgcc \
     -o ${OUTDIR}/${PROG}.elf
 
 if [[ ${KEEP_ASM} -eq 1 ]]; then

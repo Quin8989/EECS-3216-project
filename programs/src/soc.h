@@ -22,10 +22,14 @@
 #define KBD_DATA     (*(volatile unsigned int *)0x40000000)  // +0x0 read: scan code
 #define KBD_STATUS   (*(volatile unsigned int *)0x40000004)  // +0x4 read: bit 0 = data ready
 
-// SDRAM-backed framebuffer (320x240 RGB332, 4 pixels per word)
+// Framebuffer (320x240 RGB332, on-chip dual-port RAM, 4 pixels per word)
 #define FB_BASE      ((volatile unsigned int *)0x80000000)
 #define FB_WIDTH     320
 #define FB_HEIGHT    240
+
+// VGA status register (read-only):
+//   bit 0 = blanking (1 while in blanking interval)
+#define VGA_STATUS_REG  (*(volatile unsigned int *)0x30000000)
 
 // On-chip RAM (8 KB)
 #define RAM_BASE     ((volatile unsigned char *)0x02000000)

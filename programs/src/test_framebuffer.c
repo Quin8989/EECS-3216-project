@@ -1,8 +1,8 @@
 // VGA framebuffer write test
 //
-// Fills the 320x240 RGB332 framebuffer in SDRAM with a recognisable
+// Fills the 320x240 RGB332 on-chip framebuffer with a recognisable
 // colour pattern and border, then reads back a sample of words to verify
-// the SDRAM write path.  In simulation the VGA capture module will also
+// the write path.  In simulation the VGA capture module will also
 // dump a PPM image.
 
 #include "soc.h"

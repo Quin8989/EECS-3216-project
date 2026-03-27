@@ -43,26 +43,25 @@ module ram #(
         endcase
     end
 
-    // Four byte-wide banks
-    logic [7:0] bank0 [0:WORDS-1];
-    logic [7:0] bank1 [0:WORDS-1];
-    logic [7:0] bank2 [0:WORDS-1];
-    logic [7:0] bank3 [0:WORDS-1];
+    // Four byte-wide banks — each in its own submodule for guaranteed M9K inference
+    logic [7:0] rd0, rd1, rd2, rd3;
+    logic [1:0] boff_r;
+    logic [2:0] funct3_r;
 
-    // Registered outputs
-    logic [7:0]  rd0, rd1, rd2, rd3;
-    logic [1:0]  boff_r;
-    logic [2:0]  funct3_r;
+    byte_ram #(.DEPTH(WORDS)) u_bank0 (
+        .clk(clk), .addr(waddr), .wdata(wd0), .we(wen_i & be[0]), .rdata(rd0)
+    );
+    byte_ram #(.DEPTH(WORDS)) u_bank1 (
+        .clk(clk), .addr(waddr), .wdata(wd1), .we(wen_i & be[1]), .rdata(rd1)
+    );
+    byte_ram #(.DEPTH(WORDS)) u_bank2 (
+        .clk(clk), .addr(waddr), .wdata(wd2), .we(wen_i & be[2]), .rdata(rd2)
+    );
+    byte_ram #(.DEPTH(WORDS)) u_bank3 (
+        .clk(clk), .addr(waddr), .wdata(wd3), .we(wen_i & be[3]), .rdata(rd3)
+    );
 
     always_ff @(posedge clk) begin
-        if (wen_i && be[0]) bank0[waddr] <= wd0;
-        if (wen_i && be[1]) bank1[waddr] <= wd1;
-        if (wen_i && be[2]) bank2[waddr] <= wd2;
-        if (wen_i && be[3]) bank3[waddr] <= wd3;
-        rd0      <= bank0[waddr];
-        rd1      <= bank1[waddr];
-        rd2      <= bank2[waddr];
-        rd3      <= bank3[waddr];
         boff_r   <= boff;
         funct3_r <= funct3_i;
     end

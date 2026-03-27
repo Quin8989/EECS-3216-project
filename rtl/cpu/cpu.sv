@@ -22,7 +22,7 @@
 //   u_wb      — writeback.sv     : write-back source mux
 //
 // Stall policy:
-//   any_stall = load_stall | shift_stall | mul_stall | mem_stall_i
+//   any_stall = load_stall | shift_stall | mul_stall | div_stall
 //   During any_stall the PC does not advance (fetch.sv) and the
 //   register file write-enable is suppressed (register_file.sv).
 // ============================================================
@@ -35,7 +35,7 @@ module cpu #(
     input  logic              clk,
     input  logic              reset,
 
-    // Data bus interface (to mem_map.sv)
+    // Data bus interface (to top.sv memory map)
     output logic [AWIDTH-1:0] dmem_addr_o,
     output logic [DWIDTH-1:0] dmem_wdata_o,
     input  logic [DWIDTH-1:0] dmem_rdata_i,
@@ -44,9 +44,6 @@ module cpu #(
     output logic [2:0]        dmem_funct3_o,
     output logic              dmem_raw_ren_o,
     output logic              dmem_raw_wen_o,
-
-    // External memory stall (e.g. SDRAM bridge)
-    input  logic              mem_stall_i,
 
     // ROM data-bus read port (pass-through to fetch.sv)
     input  logic [AWIDTH-1:0] rom_daddr_i,
@@ -81,7 +78,7 @@ module cpu #(
     // Control outputs
     logic        pcsel, regwren, rs1sel, rs2sel, memren, memwren;
     logic [1:0]  wbsel;
-    logic [3:0]  alusel;
+    logic [4:0]  alusel;
 
     // Register file outputs
     logic [DWIDTH-1:0] rs1_data, rs2_data;
@@ -91,7 +88,7 @@ module cpu #(
 
     // ALU outputs
     logic [DWIDTH-1:0] alu_res;
-    logic              shift_stall, mul_stall;
+    logic              shift_stall, mul_stall, div_stall;
 
     // Branch output
     logic br_taken;
@@ -101,7 +98,8 @@ module cpu #(
 
     // ── Stall signals ───────────────────────────────────────────
     // load_stall: high during cycle 1 of a LOAD (data not yet ready).
-    // Suppressed for SDRAM loads (addr[31] set) — those go via mem_stall_i.
+    // All memory reads use registered outputs (1-cycle latency),
+    // so the pipeline stalls for one cycle to let the data arrive.
     logic load_stall;
     logic load_wb;   // high on cycle 2 of a LOAD (writeback cycle)
 
@@ -110,11 +108,11 @@ module cpu #(
         else       load_wb <= load_stall;
     end
 
-    assign load_stall = memren & ~load_wb & ~alu_res[31];
+    assign load_stall = memren & ~load_wb;
 
     // Unified stall: ORed into fetch stall_i and register file any_stall_i
     logic any_stall;
-    assign any_stall = load_stall | shift_stall | mul_stall | mem_stall_i;
+    assign any_stall = load_stall | shift_stall | mul_stall | div_stall;
 
     // ── JALR LSB clear ──────────────────────────────────────────
     // RISC-V spec §2.5: JALR clears bit 0 of the branch target.
@@ -238,7 +236,8 @@ module cpu #(
         .alusel_i     (alusel),
         .result_o     (alu_res),
         .shift_stall_o(shift_stall),
-        .mul_stall_o  (mul_stall)
+        .mul_stall_o  (mul_stall),
+        .div_stall_o  (div_stall)
     );
 
     // ── Branch condition evaluator ──────────────────────────────
