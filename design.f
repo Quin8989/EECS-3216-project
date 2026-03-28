@@ -7,6 +7,7 @@ cpu/register_file.sv
 cpu/alu.sv
 cpu/branch_control.sv
 cpu/writeback.sv
+periph/byte_ram_tdp.sv
 periph/ram.sv
 periph/keyboard.sv
 periph/uart.sv

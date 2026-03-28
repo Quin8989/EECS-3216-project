@@ -35,7 +35,7 @@ module test_top;
     wire [9:0] vga_h_count = dut.u_vga.h_count;
     wire [9:0] vga_v_count = dut.u_vga.v_count;
 
-    vga_capture #(.MAX_FRAMES(2)) u_vga_cap (
+    vga_capture #(.MAX_FRAMES(8)) u_vga_cap (
         .clk       (clk),
         .vga_r     (vga_r),
         .vga_g     (vga_g),

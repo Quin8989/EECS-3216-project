@@ -26,10 +26,30 @@ typedef int fx_t;   // Q16.16
 #define FX_INT(f)   ((f) >> 16)
 
 // Fixed-point division: a / b  (both Q16.16, result Q16.16).
-// Uses GCC's __divdi3 (from -lgcc) for the 64-bit software division.
+// Uses a scaled 32-bit divide path to avoid heavy 64-bit soft division
+// in the per-column render hot loop on RV32I+Zmmul.
 static inline fx_t fx_div(fx_t a, fx_t b) {
     if (b == 0) return a >= 0 ? (fx_t)0x7FFFFFFF : (fx_t)0x80000001;
-    return (fx_t)(((long long)a << 16) / (long long)b);
+
+    int neg = ((a ^ b) < 0);
+    unsigned int ua = (a < 0) ? (unsigned int)(-a) : (unsigned int)a;
+    unsigned int ub = (b < 0) ? (unsigned int)(-b) : (unsigned int)b;
+
+    // Keep the numerator shift in-range for 32-bit arithmetic.
+    while (ua > 0x00FFFFFFu) {
+        ua >>= 1;
+        ub >>= 1;
+        if (ub == 0) ub = 1;
+    }
+
+    // Q16.16 scale: (ua << 16) / ub  ≈  (ua << 8) / (ub >> 8)
+    unsigned int den = ub >> 8;
+    if (den == 0) den = 1;
+
+    unsigned int q = (ua << 8) / den;
+    if (q > 0x7FFFFFFFu) q = 0x7FFFFFFFu;
+
+    return neg ? -(fx_t)q : (fx_t)q;
 }
 
 // Absolute value
@@ -141,9 +161,22 @@ static void flush_framebuffer(volatile unsigned int *fb) {
 // Wait for vertical blanking to start — reduces tearing.
 static inline void wait_for_vblank(void) {
 #ifndef SIM_MODE
+    // Wait for a clean 0->1 transition so each render starts on a
+    // fresh vblank edge rather than mid-blanking.
+    while (VGA_STATUS_REG & 1)
+        ;
     while (!(VGA_STATUS_REG & 1))
         ;
 #endif
+}
+
+static inline int map_is_empty(fx_t nx, fx_t ny) {
+    int mx = FX_INT(nx);
+    int my = FX_INT(ny);
+
+    if ((unsigned)mx >= MAP_W || (unsigned)my >= MAP_H)
+        return 0;
+    return world_map[my][mx] == 0;
 }
 
 static void render_frame(void) {
@@ -255,22 +288,22 @@ static void poll_and_move(void) {
             case 'w': case 'W':  // forward
                 nx = pos_x + FP_MUL(dx, MOVE_SPEED);
                 ny = pos_y + FP_MUL(dy, MOVE_SPEED);
-                if (!world_map[FX_INT(ny)][FX_INT(nx)]) { pos_x = nx; pos_y = ny; }
+                if (map_is_empty(nx, ny)) { pos_x = nx; pos_y = ny; }
                 break;
             case 's': case 'S':  // backward
                 nx = pos_x - FP_MUL(dx, MOVE_SPEED);
                 ny = pos_y - FP_MUL(dy, MOVE_SPEED);
-                if (!world_map[FX_INT(ny)][FX_INT(nx)]) { pos_x = nx; pos_y = ny; }
+                if (map_is_empty(nx, ny)) { pos_x = nx; pos_y = ny; }
                 break;
             case 'a': case 'A':  // strafe left
                 nx = pos_x + FP_MUL(dy, MOVE_SPEED);
                 ny = pos_y - FP_MUL(dx, MOVE_SPEED);
-                if (!world_map[FX_INT(ny)][FX_INT(nx)]) { pos_x = nx; pos_y = ny; }
+                if (map_is_empty(nx, ny)) { pos_x = nx; pos_y = ny; }
                 break;
             case 'd': case 'D':  // strafe right
                 nx = pos_x - FP_MUL(dy, MOVE_SPEED);
                 ny = pos_y + FP_MUL(dx, MOVE_SPEED);
-                if (!world_map[FX_INT(ny)][FX_INT(nx)]) { pos_x = nx; pos_y = ny; }
+                if (map_is_empty(nx, ny)) { pos_x = nx; pos_y = ny; }
                 break;
             case ',': case '<':  // rotate left
                 angle = (angle - ROT_SPEED) & 0xFF;

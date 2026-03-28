@@ -23,6 +23,21 @@ static unsigned char test_pixel(int x, int y) {
                   (unsigned int)(x ^ y) >> 7);
 }
 
+static unsigned int expected_word_at(int x, int y) {
+    unsigned int p0 = (unsigned int)test_pixel(x + 0, y);
+    unsigned int p1 = (unsigned int)test_pixel(x + 1, y);
+    unsigned int p2 = (unsigned int)test_pixel(x + 2, y);
+    unsigned int p3 = (unsigned int)test_pixel(x + 3, y);
+    return p0 | (p1 << 8) | (p2 << 16) | (p3 << 24);
+}
+
+static void wait_for_vblank_start(void) {
+    while (VGA_STATUS_REG & 1)
+        ;
+    while (!(VGA_STATUS_REG & 1))
+        ;
+}
+
 static int test_fill_framebuffer(void) {
     for (int y = 0; y < FB_HEIGHT; y++) {
         for (int x = 0; x < FB_WIDTH; x += 4) {
@@ -34,25 +49,47 @@ static int test_fill_framebuffer(void) {
             FB_BASE[(y * (FB_WIDTH / 4)) + (x / 4)] = word;
         }
     }
+
+    // Wait long enough that scanout has displayed one complete frame using
+    // the final framebuffer contents rather than an in-progress write sweep.
+    wait_for_vblank_start();
+    wait_for_vblank_start();
+
     return 0;
 }
 
 // Read back a few words and verify they match the expected pattern.
 static int test_readback(void) {
-    // Check first word (top-left corner — white border pixel)
-    unsigned int w0 = FB_BASE[0];
-    unsigned char exp0 = rgb332(7, 7, 3);
-    unsigned int exp_word0 = exp0 | ((unsigned int)exp0 << 8) |
-                             ((unsigned int)exp0 << 16) | ((unsigned int)exp0 << 24);
-    test_assert_eq(w0, exp_word0, "fb[0,0]");
+    static const struct {
+        int x;
+        int y;
+        const char *label;
+    } samples[] = {
+        {  0,   0, "fb[0,0]" },
+        {  8,   8, "fb[8,8]" },
+        {120, 120, "fb[120,120]" },
+        {160,  40, "fb[160,40]" },
+        { 40, 160, "fb[40,160]" },
+        {316, 239, "fb[316,239]" }
+    };
 
-    // Check a word in the red rectangle area (y=120, x=120..123)
-    unsigned int idx = (120 * (FB_WIDTH / 4)) + (120 / 4);
-    unsigned int w1 = FB_BASE[idx];
-    unsigned char exp_r = rgb332(7, 1, 0);
-    unsigned int exp_word1 = exp_r | ((unsigned int)exp_r << 8) |
-                              ((unsigned int)exp_r << 16) | ((unsigned int)exp_r << 24);
-    test_assert_eq(w1, exp_word1, "fb[120,120]");
+    for (unsigned int i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
+        unsigned int idx = (unsigned int)(samples[i].y * (FB_WIDTH / 4)) +
+                           (unsigned int)(samples[i].x / 4);
+        unsigned int actual = FB_BASE[idx];
+        unsigned int expected = expected_word_at(samples[i].x, samples[i].y);
+        if (actual != expected) {
+            uart_puts("ASSERT: ");
+            uart_puts(samples[i].label);
+            uart_puts(" got=0x");
+            uart_put_hex32(actual);
+            uart_puts(" exp=0x");
+            uart_put_hex32(expected);
+            uart_puts(" ");
+            return 1;
+        }
+    }
+
     return 0;
 }
 

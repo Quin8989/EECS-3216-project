@@ -38,12 +38,6 @@ module vga_fb (
     localparam int V_VIS = 480, V_FP = 10, V_SYNC = 2,  V_BP = 33;
     localparam int V_TOT = V_VIS + V_FP + V_SYNC + V_BP;    // 525
 
-    // ── Dual-port framebuffer RAM ─────────────────────
-    (* ramstyle = "no_rw_check" *) logic [7:0] fb_b0 [0:FB_WORDS-1];
-    (* ramstyle = "no_rw_check" *) logic [7:0] fb_b1 [0:FB_WORDS-1];
-    (* ramstyle = "no_rw_check" *) logic [7:0] fb_b2 [0:FB_WORDS-1];
-    (* ramstyle = "no_rw_check" *) logic [7:0] fb_b3 [0:FB_WORDS-1];
-
     // ── Port A: CPU access ────────────────────────────
     logic [14:0] cpu_word_addr;
     assign cpu_word_addr = fb_addr_i[16:2];
@@ -82,21 +76,6 @@ module vga_fb (
         endcase
     end
 
-    // CPU writes (Port A)
-    always_ff @(posedge clk) begin
-        if (fb_we_i) begin
-            if (be[0]) fb_b0[cpu_word_addr] <= wd0;
-            if (be[1]) fb_b1[cpu_word_addr] <= wd1;
-            if (be[2]) fb_b2[cpu_word_addr] <= wd2;
-            if (be[3]) fb_b3[cpu_word_addr] <= wd3;
-        end
-    end
-
-    // CPU reads (Port A, synchronous)
-    always_ff @(posedge clk)
-        fb_rdata_o <= {fb_b3[cpu_word_addr], fb_b2[cpu_word_addr],
-                       fb_b1[cpu_word_addr], fb_b0[cpu_word_addr]};
-
     // ── VGA timing counters ───────────────────────────
     logic [9:0] h_count, v_count;
 
@@ -132,11 +111,53 @@ module vga_fb (
     wire [14:0] line_base = {1'b0, src_y, 6'b0} + {3'b0, src_y, 4'b0};
     wire [14:0] vga_word_addr = line_base + {8'b0, src_x[8:2]};
 
-    // Synchronous read (Port B) — one clock latency
+    // ── Explicit dual-port byte RAM banks ─────────────
+    logic [7:0] cpu_rd0, cpu_rd1, cpu_rd2, cpu_rd3;
+    logic [7:0] vga_rd0, vga_rd1, vga_rd2, vga_rd3;
+
+    byte_ram_tdp #(.DEPTH(FB_WORDS)) u_bank0 (
+        .clk    (clk),
+        .addr_a (cpu_word_addr),
+        .wdata_a(wd0),
+        .we_a   (fb_we_i & be[0]),
+        .rdata_a(cpu_rd0),
+        .addr_b (vga_word_addr),
+        .rdata_b(vga_rd0)
+    );
+
+    byte_ram_tdp #(.DEPTH(FB_WORDS)) u_bank1 (
+        .clk    (clk),
+        .addr_a (cpu_word_addr),
+        .wdata_a(wd1),
+        .we_a   (fb_we_i & be[1]),
+        .rdata_a(cpu_rd1),
+        .addr_b (vga_word_addr),
+        .rdata_b(vga_rd1)
+    );
+
+    byte_ram_tdp #(.DEPTH(FB_WORDS)) u_bank2 (
+        .clk    (clk),
+        .addr_a (cpu_word_addr),
+        .wdata_a(wd2),
+        .we_a   (fb_we_i & be[2]),
+        .rdata_a(cpu_rd2),
+        .addr_b (vga_word_addr),
+        .rdata_b(vga_rd2)
+    );
+
+    byte_ram_tdp #(.DEPTH(FB_WORDS)) u_bank3 (
+        .clk    (clk),
+        .addr_a (cpu_word_addr),
+        .wdata_a(wd3),
+        .we_a   (fb_we_i & be[3]),
+        .rdata_a(cpu_rd3),
+        .addr_b (vga_word_addr),
+        .rdata_b(vga_rd3)
+    );
+
+    assign fb_rdata_o = {cpu_rd3, cpu_rd2, cpu_rd1, cpu_rd0};
     logic [31:0] vga_word;
-    always_ff @(posedge clk)
-        vga_word <= {fb_b3[vga_word_addr], fb_b2[vga_word_addr],
-                     fb_b1[vga_word_addr], fb_b0[vga_word_addr]};
+    assign vga_word = {vga_rd3, vga_rd2, vga_rd1, vga_rd0};
 
     // Delay byte select to match RAM read latency
     logic [1:0] byte_sel_q;
