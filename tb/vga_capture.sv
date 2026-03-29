@@ -17,12 +17,17 @@ module vga_capture #(
     parameter int MAX_FRAMES = 2
 )(
     input logic       clk,
+    input logic       capture_en_i,
+    input logic [31:0] capture_max_frames_i,
     input logic [3:0] vga_r,
     input logic [3:0] vga_g,
     input logic [3:0] vga_b,
     input logic [9:0] h_count_i,
-    input logic [9:0] v_count_i
+    input logic [9:0] v_count_i,
+    output integer    frames_written_o
 );
+
+    assign frames_written_o = frame_count;
 
     localparam int H_VISIBLE = 640;
     localparam int V_VISIBLE = 480;
@@ -42,18 +47,21 @@ module vga_capture #(
     always @(posedge clk) begin
         prev_v <= v_count_i;
 
-        // Capture active pixels (shifted by 1 to compensate for registered output)
-        if (h_count_i >= 1 && h_count_i <= H_VISIBLE && v_count_i < V_VISIBLE) begin
-            fb_r[v_count_i * H_VISIBLE + (h_count_i - 1)] <= {vga_r, vga_r};
-            fb_g[v_count_i * H_VISIBLE + (h_count_i - 1)] <= {vga_g, vga_g};
-            fb_b[v_count_i * H_VISIBLE + (h_count_i - 1)] <= {vga_b, vga_b};
-        end
+        if (capture_en_i) begin
+            // Capture active pixels (shifted by 1 to compensate for registered output)
+            if (h_count_i >= 1 && h_count_i <= H_VISIBLE && v_count_i < V_VISIBLE) begin
+                fb_r[v_count_i * H_VISIBLE + (h_count_i - 1)] <= {vga_r, vga_r};
+                fb_g[v_count_i * H_VISIBLE + (h_count_i - 1)] <= {vga_g, vga_g};
+                fb_b[v_count_i * H_VISIBLE + (h_count_i - 1)] <= {vga_b, vga_b};
+            end
 
-        // Frame boundary: v_count just left the visible region
-        if (prev_v == 10'd479 && v_count_i == 10'd480) begin
-            if (MAX_FRAMES == 0 || frame_count < MAX_FRAMES) begin
-                write_ppm(frame_count);
-                frame_count <= frame_count + 1;
+            // Frame boundary: v_count just left the visible region
+            if (prev_v == 10'd479 && v_count_i == 10'd480) begin
+                if (((capture_max_frames_i == 0) && (MAX_FRAMES == 0 || frame_count < MAX_FRAMES)) ||
+                    ((capture_max_frames_i != 0) && (frame_count < capture_max_frames_i))) begin
+                    write_ppm(frame_count);
+                    frame_count <= frame_count + 1;
+                end
             end
         end
     end

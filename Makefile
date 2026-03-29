@@ -7,8 +7,6 @@
 #   make compile                 Build the Verilator binary (once)
 #   make run TEST=test1          Compile (if needed) + simulate one program
 #   make run-all                 Run every ISA + SoC test
-#   make run-ctests              Build + simulate all C test programs
-#   make build-tests             Build all C test .x images
 #   make clean                   Remove build artifacts
 
 TEST         ?= test1
@@ -37,11 +35,10 @@ SOC_TESTS := $(basename $(notdir $(wildcard $(ROOT)/programs/soc-tests/*.x)))
 
 INC_DIRS := $(ROOT)/rtl/soc $(ROOT)/rtl/cpu $(ROOT)/rtl/periph $(ROOT)/tb
 
-# Single build directory — program-independent
+# Build directory — no tracing for fast simulation
 VDIR   := $(ROOT)/work/sim
 SIM    := $(VDIR)/V$(TB)
-VFLAGS := --binary --timing --sv \
-          --trace \
+VFLAGS_BASE := --binary --timing --sv \
           $(addprefix +incdir+,$(INC_DIRS)) \
           --top-module $(TB) \
           --public-flat-rw \
@@ -50,14 +47,14 @@ VFLAGS := --binary --timing --sv \
           -Wno-WIDTHEXPAND \
           -Wno-WIDTHTRUNC \
           -Wno-PINMISSING \
-          -Mdir $(VDIR) \
           $(EXTRA_VFLAGS) \
           -j 0
+VFLAGS := $(VFLAGS_BASE) -Mdir $(VDIR)
 
 # Stamp file: recompile only when sources change
 STAMP := $(VDIR)/.built
 $(STAMP): $(SRC)
-	@echo "=== Compile (Verilator) ==="
+	@echo "=== Compile (Verilator, no-trace) ==="
 	@mkdir -p $(VDIR)
 	verilator $(VFLAGS) $(SRC)
 	@touch $@
@@ -67,11 +64,6 @@ compile: $(STAMP)
 run: compile
 	@echo "=== Run $(TEST) ==="
 	@$(SIM) +MEM_PATH=$(MEM_PATH)
-
-trace: compile
-	@echo "=== Trace $(TEST) ==="
-	@$(SIM) +MEM_PATH=$(MEM_PATH) +TRACE
-	@echo "=== Wrote trace.vcd ==="
 
 # ---------- Run all ISA + SoC tests ----------
 # Shell helper: resolve hex path for a test name
@@ -100,28 +92,21 @@ run-all: compile
 clean:
 	rm -rf $(ROOT)/work $(ROOT)/run.macro
 
-# ---------- C test programs ----------
-C_TESTS := test_uart test_framebuffer \
-           test_pat_arith test_pat_timer test_pat_vga \
-           test_integration
+# ---------- VGA frame gallery ----------
+GALLERY_TEST   ?= demo
+GALLERY_FRAMES ?= 10
+GALLERY_DIR    ?= $(ROOT)/work/gallery
 
-build-tests:
-	@for t in $(C_TESTS); do \
-		echo "=== Build $$t ==="; \
-		$(ROOT)/tools/build.sh $$t || exit 1; \
-	done
+vga-gallery: compile
+	@echo "=== Build $(GALLERY_TEST) ==="
+	@$(ROOT)/tools/build.sh $(GALLERY_TEST)
+	@mkdir -p $(GALLERY_DIR)
+	@echo "=== Simulate $(GALLERY_TEST) (capture $(GALLERY_FRAMES) frames) ==="
+	@cd $(GALLERY_DIR) && rm -f vga_frame*.ppm && $(SIM) +MEM_PATH=$(call find_hex,$(GALLERY_TEST)) +TIMEOUT_MS=1000 +MIN_FRAMES=$(GALLERY_FRAMES) +CAPTURE_FRAMES=1 +CAPTURE_MAX_FRAMES=$(GALLERY_FRAMES) +STOP_AFTER_MIN_FRAMES
+	@echo "=== Generate HTML gallery ==="
+	@python3 $(ROOT)/tools/vga_frames.py gallery \
+		--frames $(GALLERY_FRAMES) --dir $(GALLERY_DIR) \
+		--name $(GALLERY_TEST) -o $(GALLERY_DIR)/vga_gallery.html
+	@echo "=== Gallery: $(GALLERY_DIR)/vga_gallery.html ==="
 
-run-ctests: build-tests compile
-	@pass=0; fail=0; \
-	for t in $(C_TESTS); do \
-		hex=$$($(call find_hex_sh,$$t)); \
-		result=$$($(SIM) +MEM_PATH=$$hex 2>&1); \
-		if echo "$$result" | grep -q "RESULT: PASS"; then \
-			echo "PASS  $$t"; pass=$$((pass+1)); \
-		else \
-			echo "FAIL  $$t"; fail=$$((fail+1)); \
-		fi; \
-	done; \
-	echo ""; echo "=== C tests: $$pass passed, $$fail failed ==="
-
-.PHONY: compile run trace run-all run-ctests build-tests clean
+.PHONY: compile run run-all clean vga-gallery

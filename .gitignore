@@ -59,3 +59,12 @@ vish_stacktrace.vstf
 
 # Misc junk
 _src.txt
+
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# Debug/capture artifacts
+debug_artifacts/
+golden_capture_tmp/

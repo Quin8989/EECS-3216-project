@@ -9,7 +9,7 @@ A small RISC-V SoC targeting the Intel DE10-Lite (MAX 10, 25 MHz).
 
 | Feature | Detail |
 |---|---|
-| ISA | RV32I + Zmmul (hardware MUL, no DIV/REM) |
+| ISA | RV32IM (hardware MUL/DIV/REM) |
 | Instruction ROM | 64 KB on-chip block RAM (4 × byte-wide banks) |
 | Data RAM | 8 KB on-chip |
 | Display | 320×240 8 bpp (RGB332) on-chip framebuffer, 2× scaled to 640×480 |
@@ -22,7 +22,7 @@ A small RISC-V SoC targeting the Intel DE10-Lite (MAX 10, 25 MHz).
 
 ```
 ├── rtl/
-│   ├── cpu/            Processor core (RV32I+Zmmul, 10 files)
+│   ├── cpu/            Processor core (RV32IM, 10 files)
 │   ├── periph/         RAM, UART, timer, keyboard, VGA framebuffer
 │   └── soc/            Address decoder + SoC integration, FPGA wrapper, constants
 │
@@ -48,7 +48,7 @@ A small RISC-V SoC targeting the Intel DE10-Lite (MAX 10, 25 MHz).
 
 - **Quartus Prime Lite** (tested with 25.1std) with MAX 10 device support
 - **MSYS2** providing `bash`, `make`, `python3`, and [Verilator](https://verilator.org/)
-- **riscv64-unknown-elf-gcc 14.x+** — required for `-march=rv32i_zmmul`
+- **riscv64-unknown-elf-gcc 14.x+** — required for `-march=rv32im`
 
 ### Windows PATH
 
@@ -65,10 +65,9 @@ The Verilator binary is compiled **once** and reused for every test. Programs ar
 ```bash
 make compile                    # build Verilator binary (once)
 make run TEST=rv32ui-p-add      # run one ISA test
-make run TEST=test_framebuffer  # run one C test
+make run TEST=demo              # run one C program
 make run-all                    # run all ISA + SoC tests (sequential)
 make run-all -j$(nproc)         # run all tests in parallel (all cores)
-make run-ctests                 # build + run all C tests
 ```
 
 ### How It Works
@@ -79,6 +78,59 @@ make run-ctests                 # build + run all C tests
 4. The CPU runs until `ecall` — the testbench reads register `x3` and prints `PASS` or `FAIL`
 
 Changing programs is instant — no recompilation. The stamp file `work/sim/.built` tracks source changes so `make compile` is only re-run when RTL changes.
+
+### Simulation Knobs (Plusargs)
+
+The testbench supports a few useful runtime controls:
+
+```bash
+# Enable VCD dump (trace.vcd)
+work/sim/Vtest_top +MEM_PATH=programs/demo.x +TRACE
+
+# Run simulator directly with custom plusargs
+work/sim/Vtest_top +MEM_PATH=programs/demo.x +TIMEOUT_MS=1000 +MIN_FRAMES=10
+```
+
+- `+TRACE` enables waveform dumping
+- `+TIMEOUT_MS=N` sets global timeout in milliseconds
+- `+MIN_FRAMES=N` delays pass/fail exit until N VGA frames are captured
+- `+CAPTURE_FRAMES=1` enables PPM frame dumping (disabled by default)
+- `+STOP_AFTER_MIN_FRAMES` exits once MIN_FRAMES are captured (fast gallery mode)
+
+---
+
+## VGA Frame Generation (Simulation)
+
+Use this flow when you want visual regression checks for VGA output without touching FPGA hardware.
+
+### Quick Gallery (One Command)
+
+```bash
+make vga-gallery GALLERY_TEST=demo GALLERY_FRAMES=10
+```
+
+What this does:
+
+1. Builds the selected C program (`tools/build.sh`)
+2. Runs the unified Verilator simulation build (`make compile`) and captures `vga_frame*.ppm`
+3. Generates an HTML gallery at `work/gallery/vga_gallery.html`
+
+`make vga-gallery` clears old `vga_frame*.ppm`, captures exactly `GALLERY_FRAMES`, and exits early once that count is reached.
+
+### Export PNG Frames
+
+```bash
+python tools/vga_frames.py export --dir work/gallery --frames 10
+```
+
+---
+
+## Prebuilt Program Quick Reference
+
+- `demo`: peripheral and sanity test menu
+- `bootmenu`: VGA menu shell with keyboard navigation
+- `wolf3d`: raycaster demo
+- `test_diagnostic`: diagnostic pattern / hardware check flow
 
 ---
 
@@ -93,28 +145,27 @@ Changing programs is instant — no recompilation. The stamp file `work/sim/.bui
 ```powershell
 . .\tools\setup_windows_env.ps1
 
-# 1. Compile C → hex image
-bash tools/build.sh wolf3d
+# 1. Build C program → hex image (automatically generates ROM banks)
+bash tools/build.sh <program>
 
-# 2. Split into ROM banks + update QSF
-.\tools\select_boot_program.ps1 wolf3d
-
-# 3. Synthesize (from constraints/ directory)
-Push-Location constraints
+# 2. Synthesize and program FPGA
+cd constraints
 quartus_sh --flow compile de10_lite
-quartus_pgm -m jtag -o "p;de10_lite.sof"
-Pop-Location
+quartus_pgm -c 1 -m JTAG -o "p;de10_lite.sof"
+cd ..
 ```
 
-### Swap Programs
+### Switch Boot Program
 
 ```powershell
-bash tools/build.sh <program>               # if source changed
-.\tools\select_boot_program.ps1 <program>
-Push-Location constraints
-quartus_sh --flow compile de10_lite          # full recompile required
-quartus_pgm -m jtag -o "p;de10_lite.sof"
-Pop-Location
+# Build a different program (ROM banks auto-generated)
+bash tools/build.sh <program>
+
+# Recompile FPGA (full rebuild required)
+cd constraints
+quartus_sh --flow compile de10_lite
+quartus_pgm -c 1 -m JTAG -o "p;de10_lite.sof"
+cd ..
 ```
 
 ---
@@ -128,11 +179,10 @@ Fixed-point (Q16.16) raycaster rendering coloured walls onto the VGA framebuffer
 ```powershell
 . .\tools\setup_windows_env.ps1
 bash tools/build.sh wolf3d
-.\tools\select_boot_program.ps1 wolf3d
-Push-Location constraints
+cd constraints
 quartus_sh --flow compile de10_lite
-quartus_pgm -m jtag -o "p;de10_lite.sof"
-Pop-Location
+quartus_pgm -c 1 -m JTAG -o "p;de10_lite.sof"
+cd ..
 ```
 
 ### Terminal 2 — JTAG Keyboard Server
@@ -141,6 +191,8 @@ Pop-Location
 . .\tools\setup_windows_env.ps1
 system-console --no-gui --script=tools/keyboard_server.tcl
 ```
+
+Note: PATH updates from setup_windows_env.ps1 are per terminal session. If you open a new terminal, run the setup line again before starting system-console.
 
 ### Terminal 3 — Keyboard Injector
 
@@ -213,12 +265,51 @@ make run TEST=my_test
 ### 4. Run on FPGA
 
 ```powershell
-.\tools\select_boot_program.ps1 my_test
-Push-Location constraints
+# Build program and regenerate ROM banks
+bash tools/build.sh my_test
+
+# Recompile and program FPGA
+cd constraints
 quartus_sh --flow compile de10_lite
-quartus_pgm -m jtag -o "p;de10_lite.sof"
-Pop-Location
+quartus_pgm -c 1 -m JTAG -o "p;de10_lite.sof"
+cd ..
 ```
+
+---
+
+## Rebuilding Assembly Tests
+
+Rebuild RV32UM/SOC assembly tests after editing `.S` sources:
+
+```bash
+# Build one RV32UM test
+bash programs/src/build-isa.sh rv32um-p-mulh
+
+# Build all RV32UM tests
+bash programs/src/build-isa.sh
+
+# Build a specific .S file to a chosen output
+bash tools/build_asm.sh programs/src/soc-p-ram.S programs/soc-tests/soc-p-ram.x
+```
+
+---
+
+## Build Knobs
+
+Common Make variables:
+
+- `TEST=<name>`: target program/test for `make run`
+- `TB=<name>`: testbench module (default `test_top`)
+- `EXTRA_VFLAGS="..."`: extra Verilator flags
+- `GALLERY_TEST=<name>` / `GALLERY_FRAMES=<n>`: VGA gallery controls
+
+---
+
+## Output Artifacts
+
+- `work/sim/`: simulator build output (`Vtest_top`), reused for normal runs and gallery capture
+- `work/gallery/`: captured `vga_frame*.ppm` and gallery HTML
+- `trace.vcd`: waveform dump when `+TRACE` is passed to `work/sim/Vtest_top`
 
 ---
 
@@ -229,7 +320,6 @@ Pop-Location
 | RV32UI ISA tests | 38 | `make run-all` |
 | RV32UM tests (mul/div) | 8 | `make run-all` |
 | SoC tests (RAM) | 1 | `make run-all` |
-| C peripheral tests | 6 | `make run-ctests` |
 
 ---
 
@@ -240,8 +330,10 @@ Pop-Location
 ROM is baked during `quartus_map`. Always run a **full recompile** after changing the boot image:
 
 ```powershell
-.\tools\select_boot_program.ps1 <program>
-Push-Location constraints; quartus_sh --flow compile de10_lite; Pop-Location
+bash tools/build.sh <program>
+cd constraints
+quartus_sh --flow compile de10_lite
+cd ..
 ```
 
 ### Wolf3D shows only ceiling/floor (no walls)
@@ -257,3 +349,19 @@ The ROM wasn't updated. Follow the full recompile steps above.
 ### JTAG bus contention
 
 Only one process can hold the JTAG cable. Kill `system-console` before running `quartus_pgm`.
+
+### Windows JTAG sequence (recommended)
+
+```powershell
+# 1) Stop server before programming
+Get-Process | Where-Object { $_.ProcessName -match 'system-console|jtagd' } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+
+# 2) Program FPGA
+Push-Location constraints
+quartus_pgm -c 1 -m JTAG -o "p;de10_lite.sof"
+Pop-Location
+
+# 3) Start keyboard server (use absolute path if needed)
+& "C:\altera_lite\25.1std\quartus\sopc_builder\bin\system-console.exe" --no-gui --script=tools/keyboard_server.tcl
+```

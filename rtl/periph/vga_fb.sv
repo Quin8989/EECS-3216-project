@@ -99,7 +99,7 @@ module vga_fb (
     wire vsync_next = ~(v_count >= V_VIS + V_FP &&
                         v_count <  V_VIS + V_FP + V_SYNC);
 
-    assign blanking_o = ~active;
+    assign blanking_o = (v_count >= V_VIS);
 
     // ── Port B: VGA scanout ───────────────────────────
     // Source pixel from 2× scaled coordinates
@@ -115,7 +115,7 @@ module vga_fb (
     logic [7:0] cpu_rd0, cpu_rd1, cpu_rd2, cpu_rd3;
     logic [7:0] vga_rd0, vga_rd1, vga_rd2, vga_rd3;
 
-    byte_ram_tdp #(.DEPTH(FB_WORDS)) u_bank0 (
+    bram #(.DEPTH(FB_WORDS), .DUAL_PORT(1)) u_bank0 (
         .clk    (clk),
         .addr_a (cpu_word_addr),
         .wdata_a(wd0),
@@ -125,7 +125,7 @@ module vga_fb (
         .rdata_b(vga_rd0)
     );
 
-    byte_ram_tdp #(.DEPTH(FB_WORDS)) u_bank1 (
+    bram #(.DEPTH(FB_WORDS), .DUAL_PORT(1)) u_bank1 (
         .clk    (clk),
         .addr_a (cpu_word_addr),
         .wdata_a(wd1),
@@ -135,7 +135,7 @@ module vga_fb (
         .rdata_b(vga_rd1)
     );
 
-    byte_ram_tdp #(.DEPTH(FB_WORDS)) u_bank2 (
+    bram #(.DEPTH(FB_WORDS), .DUAL_PORT(1)) u_bank2 (
         .clk    (clk),
         .addr_a (cpu_word_addr),
         .wdata_a(wd2),
@@ -145,7 +145,7 @@ module vga_fb (
         .rdata_b(vga_rd2)
     );
 
-    byte_ram_tdp #(.DEPTH(FB_WORDS)) u_bank3 (
+    bram #(.DEPTH(FB_WORDS), .DUAL_PORT(1)) u_bank3 (
         .clk    (clk),
         .addr_a (cpu_word_addr),
         .wdata_a(wd3),

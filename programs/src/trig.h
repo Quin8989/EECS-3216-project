@@ -15,7 +15,8 @@
 #define TRIG_H
 
 // sin_table[i] = round(sin(i * 2π / 256) * 65536), i = 0..255
-static const int sin_table[256] = {
+// Force into ROM (.rodata) - volatile would put it in RAM
+static const int sin_table[256] __attribute__((section(".rodata"))) = {
           0,    1608,    3216,    4821,    6424,    8022,    9616,   11204,
       12785,   14359,   15924,   17479,   19024,   20557,   22078,   23586,
       25080,   26558,   28020,   29466,   30893,   32303,   33692,   35062,

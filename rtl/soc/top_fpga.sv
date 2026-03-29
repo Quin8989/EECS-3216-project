@@ -48,6 +48,15 @@ module top_fpga (
     always_ff @(posedge MAX10_CLK1_50)
         clk_25m <= ~clk_25m;
 
+    // ── Power-on reset: hold CPU in reset for 256 cycles after config ────
+    logic [7:0] por_cnt = 8'd0;  // Initialized to 0 on config
+    logic       por_done;
+    always_ff @(posedge clk_25m) begin
+        if (!por_done)
+            por_cnt <= por_cnt + 1'b1;
+    end
+    assign por_done = (por_cnt == 8'hFF);
+
     // ── Reset synchroniser (2-FF on 25 MHz domain) ────
     logic [1:0] rst_sync;
     always_ff @(posedge clk_25m)
@@ -55,7 +64,7 @@ module top_fpga (
 
     logic reset;
     logic jtag_soft_reset;
-    assign reset = rst_sync[1] | jtag_soft_reset;
+    assign reset = rst_sync[1] | jtag_soft_reset | ~por_done;
 
     // ── SoC signals ───────────────────────────────
     logic        uart_tx_w;

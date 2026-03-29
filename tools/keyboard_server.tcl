@@ -1,9 +1,11 @@
 # keyboard_server.tcl — JTAG keyboard injection server for EECS 3216 SoC
 #
 # Runs inside Intel System Console.  Opens a TCP socket server on $PORT.
-# Each byte received from a connected client is written to the JTAG keyboard
-# injection address (JTAG_KBD_INJECT_ADDR in top_fpga.sv), which the RTL
-# captures and delivers to the keyboard peripheral at 0x40000000.
+# Each ASCII byte received from a connected client is written to the JTAG
+# keyboard injection address (JTAG_KBD_INJECT_ADDR in top_fpga.sv), which
+# the RTL captures and delivers to the keyboard peripheral at 0x40000000.
+#
+# NOTE: This sends ASCII codes (e.g., 'w'=0x77, ' '=0x20), NOT PS/2 scan codes.
 #
 # Usage (Linux / York lab):
 #   system-console --no-gui --script=tools/keyboard_server.tcl

@@ -34,10 +34,21 @@ if [[ ! -f "${SRCDIR}/${PROG}.c" ]]; then
     exit 1
 fi
 
+# Check for additional source files (in <prog>.deps)
+EXTRA_SRCS=""
+if [[ -f "${SRCDIR}/${PROG}.deps" ]]; then
+    while IFS= read -r dep || [[ -n "$dep" ]]; do
+        dep="${dep%$'\r'}"  # Strip CR if present (Windows line endings)
+        [[ -z "$dep" || "$dep" == \#* ]] && continue
+        EXTRA_SRCS="${EXTRA_SRCS} ${SRCDIR}/${dep}"
+    done < "${SRCDIR}/${PROG}.deps"
+fi
+
 # Compile + link
 ${CC} ${CFLAGS} ${LDFLAGS} \
     ${SRCDIR}/crt0.s \
     ${SRCDIR}/${PROG}.c \
+    ${EXTRA_SRCS} \
     -lgcc \
     -o ${OUTDIR}/${PROG}.elf
 

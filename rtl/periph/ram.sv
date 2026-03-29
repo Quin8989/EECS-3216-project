@@ -48,17 +48,21 @@ module ram #(
     logic [1:0] boff_r;
     logic [2:0] funct3_r;
 
-    byte_ram #(.DEPTH(WORDS)) u_bank0 (
-        .clk(clk), .addr(waddr), .wdata(wd0), .we(wen_i & be[0]), .rdata(rd0)
+    bram #(.DEPTH(WORDS), .DUAL_PORT(0)) u_bank0 (
+        .clk(clk), .addr_a(waddr), .wdata_a(wd0), .we_a(wen_i & be[0]),
+        .rdata_a(rd0), .addr_b('0), .rdata_b()
     );
-    byte_ram #(.DEPTH(WORDS)) u_bank1 (
-        .clk(clk), .addr(waddr), .wdata(wd1), .we(wen_i & be[1]), .rdata(rd1)
+    bram #(.DEPTH(WORDS), .DUAL_PORT(0)) u_bank1 (
+        .clk(clk), .addr_a(waddr), .wdata_a(wd1), .we_a(wen_i & be[1]),
+        .rdata_a(rd1), .addr_b('0), .rdata_b()
     );
-    byte_ram #(.DEPTH(WORDS)) u_bank2 (
-        .clk(clk), .addr(waddr), .wdata(wd2), .we(wen_i & be[2]), .rdata(rd2)
+    bram #(.DEPTH(WORDS), .DUAL_PORT(0)) u_bank2 (
+        .clk(clk), .addr_a(waddr), .wdata_a(wd2), .we_a(wen_i & be[2]),
+        .rdata_a(rd2), .addr_b('0), .rdata_b()
     );
-    byte_ram #(.DEPTH(WORDS)) u_bank3 (
-        .clk(clk), .addr(waddr), .wdata(wd3), .we(wen_i & be[3]), .rdata(rd3)
+    bram #(.DEPTH(WORDS), .DUAL_PORT(0)) u_bank3 (
+        .clk(clk), .addr_a(waddr), .wdata_a(wd3), .we_a(wen_i & be[3]),
+        .rdata_a(rd3), .addr_b('0), .rdata_b()
     );
 
     always_ff @(posedge clk) begin

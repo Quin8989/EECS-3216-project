@@ -10,6 +10,7 @@
 
 #include "soc.h"
 #include "trig.h"
+#include "wolf3d.h"
 
 // ── RGB332 colour helpers ─────────────────────────────────
 
@@ -319,7 +320,16 @@ static void poll_and_move(void) {
 
 // ── Main ──────────────────────────────────────────────────
 
-int main(void) {
+// Quick framebuffer fill (black = 0x00)
+static void fb_clear(void) {
+    for (int i = 0; i < FB_WIDTH * FB_HEIGHT / 4; i++)
+        FB_BASE[i] = 0;
+}
+
+void wolf3d_main(void) {
+    // Clear framebuffer
+    fb_clear();
+
     uart_puts("WOLF3D raycaster\r\n");
 
     // Starting position: open area near top-left, facing right (angle 0)
@@ -340,12 +350,13 @@ int main(void) {
     uart_put_hex32(col_buf[160].col);
     uart_puts("\r\n");
     uart_puts("Frame done\r\n");
-    return 1;  // PASS — triggers ECALL in crt0
+    return;  // simulation mode exit
 #else
+    // Hardware: run the full raycaster loop with keyboard input
     while (1) {
+        wait_for_vblank();
         poll_and_move();
         render_frame();
     }
-    return 0;
 #endif
 }

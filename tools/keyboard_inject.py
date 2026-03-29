@@ -3,9 +3,12 @@
 keyboard_inject.py — Capture desktop keypresses and inject into RISC-V SoC
 via the System Console JTAG keyboard server (keyboard_server.tcl).
 
-Each keypress is sent as a single ASCII byte to the Tcl server, which
-writes it to the JTAG keyboard injection address.  The FPGA RTL captures it
-and delivers it to the keyboard peripheral (KBD_DATA / KBD_STATUS).
+Each keypress is sent as a single ASCII byte (e.g., 'w'=0x77, ' '=0x20) to
+the Tcl server, which writes it to the JTAG keyboard injection address.
+The FPGA RTL captures it and delivers it to the keyboard peripheral.
+
+NOTE: This sends ASCII codes, NOT PS/2 scan codes. Software reading the
+keyboard peripheral should compare against ASCII values like 'w', 's', ' '.
 
 Usage
 -----
