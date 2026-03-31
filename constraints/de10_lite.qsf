@@ -51,6 +51,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/cpu/cpu.sv
 
 # Peripherals
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/bram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/byte_ram_tdp.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/ram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/keyboard.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/periph/uart.sv

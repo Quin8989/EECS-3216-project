@@ -85,10 +85,12 @@ cd ..
 # This runs Analysis → Synthesis → Fitter → Assembler → Timing (takes a few minutes)
 
 # 4. Program the FPGA via USB-Blaster
-quartus_pgm -m jtag -o "P;constraints/output_files/de10_lite.sof"
+quartus_pgm -m jtag -o "P;constraints/de10_lite.sof"
 
 # 5. Start keyboard input (two terminals):
-wish tools/keyboard_server.tcl          # terminal 1
+#    keyboard_server.tcl uses Intel System Console APIs, NOT plain Tcl/Tk.
+#    Use system-console (not wish) to run it:
+$HOME/altera_lite/25.1std/quartus/sopc_builder/bin/system-console --no-gui --script=tools/keyboard_server.tcl   # terminal 1
 python3 tools/keyboard_inject.py        # terminal 2
 
 # Controls: W/S to navigate menu, SPACE to select
@@ -107,5 +109,5 @@ python3 tools/keyboard_inject.py        # terminal 2
 | Frame gallery | `make vga-gallery GALLERY_TEST=<name> GALLERY_FRAMES=N` |
 | Waveform trace | `work/sim/Vtest_top +MEM_PATH=programs/<name>.x +TRACE` |
 | FPGA synthesis | `cd constraints && quartus_sh --flow compile de10_lite` |
-| Program FPGA | `quartus_pgm -m jtag -o "P;constraints/output_files/de10_lite.sof"` |
+| Program FPGA | `quartus_pgm -m jtag -o "P;constraints/de10_lite.sof"` |
 | Clean build | `make clean` |

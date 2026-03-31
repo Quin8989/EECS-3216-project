@@ -47,6 +47,9 @@ incremental_db/
 output_files/
 *.qws
 *.bak
+*.flow.rpt
+*.map.rpt
+*.map.summary
 
 # OS
 .DS_Store
