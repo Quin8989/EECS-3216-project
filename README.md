@@ -13,7 +13,7 @@ A small RISC-V SoC targeting the Intel DE10-Lite (MAX 10, 25 MHz).
 | Instruction ROM | 64 KB on-chip block RAM (4 × byte-wide banks) |
 | Data RAM | 8 KB on-chip |
 | Display | 320×240 8 bpp (RGB332) on-chip framebuffer, 2× scaled to 640×480 |
-| Input | PS/2 keyboard via JTAG injection at `0x4000_0000` |
+| Input | ASCII keyboard via JTAG injection at `0x4000_0000` |
 | UART | TX-only, 115200 8N1 |
 | Timer | 32-bit free-running counter with compare + match flag |
 | JTAG | Intel JTAG-to-Avalon master for keyboard injection |
@@ -207,7 +207,7 @@ python tools\keyboard_inject.py
 ```
 keyboard_inject.py ──TCP:2540──► keyboard_server.tcl (System Console)
     ──JTAG write 0x4FFFFF00──► top_fpga.sv (intercepts)
-    ──► keyboard.sv @ 0x40000000 ──► wolf3d.c polls KBD_STATUS/KBD_DATA
+    ──► keyboard.sv @ 0x40000000 ──► wolf3d.c polls KBD_STATUS/KBD_DATA (ASCII codes)
 ```
 
 ---

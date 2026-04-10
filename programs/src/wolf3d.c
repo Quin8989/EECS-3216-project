@@ -5,7 +5,7 @@
 // the hardware MUL/MULH/DIV instructions (RV32IM).
 //
 // Platform:  320×240 RGB332 framebuffer at 0x80000000
-//            PS/2 keyboard at 0x40000000
+//            ASCII keyboard at 0x40000000
 //            25 MHz RV32IM CPU, 64 KB ROM, 8 KB RAM
 
 #include "soc.h"

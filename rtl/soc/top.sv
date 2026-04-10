@@ -13,7 +13,7 @@ module top (
     // UART
     output logic       uart_tx_o,
     input  logic       uart_rx_i,
-    // Desktop keyboard bridge over JTAG (scan-code injection)
+    // Desktop keyboard bridge over JTAG (ASCII-code injection)
     input  logic       jtag_kbd_valid_i,
     input  logic [7:0] jtag_kbd_code_i,
     // Debug

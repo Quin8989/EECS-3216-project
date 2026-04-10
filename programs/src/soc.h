@@ -18,8 +18,8 @@
 #define TIMER_CMP    (*(volatile unsigned int *)0x20000004)  // +0x4 write: compare value
 #define TIMER_STATUS (*(volatile unsigned int *)0x20000008)  // +0x8 read: bit 0 = match; write 1 to clear
 
-// Keyboard (PS/2 scan codes via JTAG injection)
-#define KBD_DATA     (*(volatile unsigned int *)0x40000000)  // +0x0 read: scan code
+// Keyboard (ASCII codes via JTAG injection)
+#define KBD_DATA     (*(volatile unsigned int *)0x40000000)  // +0x0 read: ASCII code
 #define KBD_STATUS   (*(volatile unsigned int *)0x40000004)  // +0x4 read: bit 0 = data ready
 
 // Framebuffer (320x240 RGB332, on-chip dual-port RAM, 4 pixels per word)
